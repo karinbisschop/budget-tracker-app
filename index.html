@@ -695,115 +695,134 @@ let dashCharts = {};
 
 function renderDashboard() {
   const txs = txForMonth();
+  const hasTx = txs.length > 0;
   const inc = totalIncome(txs);
   const exp = totalExpenses(txs);
   const saved = inc - exp;
   const savingsGoal = data.savingsGoal || 0;
 
-  // Alerts
+  // Alerts — only when there are actual transactions
   let alerts = '';
-  data.categories.forEach(c => {
-    if (c.budget <= 0) return;
-    const spent = txs.filter(t => t.type==='expense' && t.category === c.name).reduce((s,t)=>s+t.amount, 0);
-    const pctUsed = (spent / c.budget) * 100;
-    if (pctUsed >= 100) alerts += `<div class="alert danger"><span class="alert-icon">⚠️</span>${escHtml(c.name)}: ${eur(spent)} van ${eur(c.budget)} — <b>over budget!</b></div>`;
-    else if (pctUsed >= 85) alerts += `<div class="alert warn"><span class="alert-icon">⚡</span>${escHtml(c.name)}: ${eur(spent)} van ${eur(c.budget)} — <b>bijna op</b></div>`;
-  });
+  if (hasTx) {
+    data.categories.forEach(c => {
+      if (c.budget <= 0) return;
+      const spent = txs.filter(t => t.type==='expense' && t.category === c.name).reduce((s,t)=>s+t.amount, 0);
+      if (spent <= 0) return;
+      const pctUsed = (spent / c.budget) * 100;
+      if (pctUsed >= 100) alerts += `<div class="alert danger"><span class="alert-icon">⚠️</span>${escHtml(c.name)}: ${eur(spent)} van ${eur(c.budget)} — <b>over budget!</b></div>`;
+      else if (pctUsed >= 85) alerts += `<div class="alert warn"><span class="alert-icon">⚡</span>${escHtml(c.name)}: ${eur(spent)} van ${eur(c.budget)} — <b>bijna op</b></div>`;
+    });
+  }
 
   // Top expenses
   const expByCat = {};
   txs.filter(t=>t.type==='expense').forEach(t => { expByCat[t.category] = (expByCat[t.category]||0) + t.amount; });
   const topCats = Object.entries(expByCat).sort((a,b)=>b[1]-a[1]).slice(0,6);
 
-  // ---- Planned totals ----
-  const plannedInc = (data.incomeBudgets || []).reduce((s,b) => s + b.amount, 0);
-  const plannedExp = data.categories.reduce((s,c) => s + (c.budget || 0), 0);
-  const plannedSaved = plannedInc - plannedExp;
-  const plannedRate = plannedInc > 0 ? (plannedSaved / plannedInc) * 100 : 0;
+  // ---- Budget totals ----
+  const budgetInc = (data.incomeBudgets || []).reduce((s,b) => s + b.amount, 0);
+  const budgetExp = data.categories.reduce((s,c) => s + (c.budget || 0), 0);
+  const budgetSaved = budgetInc - budgetExp;
+  const budgetRate = budgetInc > 0 ? (budgetSaved / budgetInc) * 100 : 0;
+  const hasBudget = budgetInc > 0 || budgetExp > 0;
 
   // ---- Actual totals ----
   const actualRate = inc > 0 ? (saved / inc) * 100 : 0;
 
   // ---- Difference ----
-  const diffSaved = saved - plannedSaved;
+  const diffSaved = saved - budgetSaved;
   const diffClass = diffSaved >= 0 ? 'val-green' : 'val-red';
   const diffSign = diffSaved >= 0 ? '+' : '';
 
-  // ---- Verdict ----
-  let verdictClass, verdictText, verdictSub;
-  if (savingsGoal > 0) {
-    if (saved >= savingsGoal) {
-      verdictClass = 'on-track'; verdictText = 'Op schema!';
-      verdictSub = `Je spaart ${eur(saved)} — doel is ${eur(savingsGoal)}`;
-    } else if (saved >= savingsGoal * 0.7) {
-      verdictClass = 'close'; verdictText = 'Bijna op doel';
-      verdictSub = `Nog ${eur(savingsGoal - saved)} te gaan tot je doel van ${eur(savingsGoal)}`;
+  // ---- Table columns: only show Werkelijk + Verschil when there are transactions ----
+  const showActual = hasTx;
+  const colHeaders = showActual
+    ? '<th></th><th>Budget</th><th>Werkelijk</th><th>Verschil</th>'
+    : '<th></th><th>Budget</th>';
+
+  const incRow = showActual
+    ? `<td class="val-green">${eur(inc)}</td><td class="${inc - budgetInc >= 0 ? 'val-green' : 'val-red'}">${hasBudget ? (inc - budgetInc >= 0 ? '+' : '') + eur(inc - budgetInc) : '—'}</td>`
+    : '';
+  const expRow = showActual
+    ? `<td class="val-red">${eur(exp)}</td><td class="${exp - budgetExp <= 0 ? 'val-green' : 'val-red'}">${hasBudget ? (exp <= budgetExp ? '' : '+') + eur(exp - budgetExp) : '—'}</td>`
+    : '';
+  const totalRow = showActual
+    ? `<td class="val-blue">${eur(saved)}${inc > 0 ? ' <span class="formula">(' + pct(actualRate) + ')</span>' : ''}</td><td class="${diffClass}">${hasBudget ? diffSign + eur(diffSaved) : '—'}</td>`
+    : '';
+
+  // ---- Verdict — only when there are actual transactions ----
+  let verdictHtml = '';
+  if (hasTx) {
+    let verdictClass, verdictText, verdictSub;
+    if (savingsGoal > 0) {
+      if (saved >= savingsGoal) {
+        verdictClass = 'on-track'; verdictText = 'Op schema!';
+        verdictSub = `Je spaart ${eur(saved)} — doel is ${eur(savingsGoal)}`;
+      } else if (saved >= savingsGoal * 0.7) {
+        verdictClass = 'close'; verdictText = 'Bijna op doel';
+        verdictSub = `Nog ${eur(savingsGoal - saved)} te gaan tot je doel van ${eur(savingsGoal)}`;
+      } else {
+        verdictClass = 'off-track'; verdictText = 'Onder doel';
+        verdictSub = `Nog ${eur(savingsGoal - saved)} te gaan tot je doel van ${eur(savingsGoal)}`;
+      }
+    } else if (hasBudget) {
+      if (saved >= budgetSaved) {
+        verdictClass = 'on-track'; verdictText = 'Op schema!';
+        verdictSub = `Je spaart ${eur(Math.abs(diffSaved))} meer dan budget`;
+      } else if (saved >= budgetSaved * 0.7) {
+        verdictClass = 'close'; verdictText = 'Bijna op schema';
+        verdictSub = `Je spaart ${eur(Math.abs(diffSaved))} minder dan budget`;
+      } else {
+        verdictClass = 'off-track'; verdictText = 'Onder budget';
+        verdictSub = `Je spaart ${eur(Math.abs(diffSaved))} minder dan budget`;
+      }
     } else {
-      verdictClass = 'off-track'; verdictText = 'Onder doel';
-      verdictSub = `Nog ${eur(savingsGoal - saved)} te gaan tot je doel van ${eur(savingsGoal)}`;
+      verdictClass = saved >= 0 ? 'on-track' : 'off-track';
+      verdictText = saved >= 0 ? 'Positief saldo' : 'Meer uitgegeven dan ontvangen';
+      verdictSub = `Saldo deze maand: ${eur(saved)}`;
     }
-  } else if (plannedSaved > 0) {
-    if (saved >= plannedSaved) {
-      verdictClass = 'on-track'; verdictText = 'Op schema!';
-      verdictSub = `Je spaart ${eur(diffSaved)} meer dan gepland`;
-    } else if (saved >= plannedSaved * 0.7) {
-      verdictClass = 'close'; verdictText = 'Bijna op schema';
-      verdictSub = `Je spaart ${eur(Math.abs(diffSaved))} minder dan gepland`;
-    } else {
-      verdictClass = 'off-track'; verdictText = 'Onder budget';
-      verdictSub = `Je spaart ${eur(Math.abs(diffSaved))} minder dan gepland`;
-    }
-  } else {
-    verdictClass = saved >= 0 ? 'on-track' : 'off-track';
-    verdictText = saved >= 0 ? 'Positief saldo' : 'Meer uitgegeven dan ontvangen';
-    verdictSub = `Saldo deze maand: ${eur(saved)}`;
+    verdictHtml = `<div class="verdict-bar ${verdictClass}">${verdictText}<div class="verdict-sub">${verdictSub}</div></div>`;
+  } else if (!hasBudget) {
+    verdictHtml = `<div style="text-align:center;padding:.75rem;color:var(--text-light);font-size:.85rem">Nog geen budget of transacties ingesteld</div>`;
   }
 
   document.getElementById('dashContent').innerHTML = `
     <div class="card">
       <h2>Maandoverzicht</h2>
       <table class="bsum">
-        <thead>
-          <tr><th></th><th>Gepland</th><th>Werkelijk</th><th>Verschil</th></tr>
-        </thead>
+        <thead><tr>${colHeaders}</tr></thead>
         <tbody>
           <tr>
             <td class="row-label">Inkomen</td>
-            <td class="val-green">${plannedInc > 0 ? eur(plannedInc) : '—'}</td>
-            <td class="val-green">${eur(inc)}</td>
-            <td class="${inc - plannedInc >= 0 ? 'val-green' : 'val-red'}">${plannedInc > 0 ? (inc - plannedInc >= 0 ? '+' : '') + eur(inc - plannedInc) : '—'}</td>
+            <td class="val-green">${budgetInc > 0 ? eur(budgetInc) : '—'}</td>
+            ${incRow}
           </tr>
           <tr>
             <td class="row-label">Uitgaven</td>
-            <td class="val-red">${plannedExp > 0 ? eur(plannedExp) : '—'}</td>
-            <td class="val-red">${eur(exp)}</td>
-            <td class="${exp - plannedExp <= 0 ? 'val-green' : 'val-red'}">${plannedExp > 0 ? (exp <= plannedExp ? '' : '+') + eur(exp - plannedExp) : '—'}</td>
+            <td class="val-red">${budgetExp > 0 ? eur(budgetExp) : '—'}</td>
+            ${expRow}
           </tr>
           <tr class="row-total">
             <td><span class="formula">Inkomen − Uitgaven =</span></td>
-            <td class="val-blue">${plannedInc > 0 || plannedExp > 0 ? eur(plannedSaved) : '—'}${plannedInc > 0 ? ' <span class="formula">(' + pct(plannedRate) + ')</span>' : ''}</td>
-            <td class="val-blue">${eur(saved)}${inc > 0 ? ' <span class="formula">(' + pct(actualRate) + ')</span>' : ''}</td>
-            <td class="${diffClass}">${plannedInc > 0 || plannedExp > 0 ? diffSign + eur(diffSaved) : '—'}</td>
+            <td class="val-blue">${hasBudget ? eur(budgetSaved) : '—'}${budgetInc > 0 ? ' <span class="formula">(' + pct(budgetRate) + ')</span>' : ''}</td>
+            ${totalRow}
           </tr>
         </tbody>
       </table>
-      <div class="verdict-bar ${verdictClass}">
-        ${verdictText}
-        <div class="verdict-sub">${verdictSub}</div>
-      </div>
+      ${verdictHtml}
     </div>
 
     ${alerts ? `<div class="card"><h2>Waarschuwingen</h2>${alerts}</div>` : ''}
 
     <div class="card">
-      <h2>Gespaard per maand</h2>
+      <h2>Gespaard per maand — ${viewDate.getFullYear()}</h2>
       <div class="chart-container"><canvas id="chartSavings"></canvas></div>
     </div>
 
     <div class="card">
       <h2>Grootste uitgaven deze maand</h2>
       ${topCats.length > 0 ? `<div class="chart-container"><canvas id="chartExpenses"></canvas></div>` :
-        `<p style="text-align:center;color:var(--text-light);padding:1rem">Nog geen uitgaven deze maand</p>`}
+        `<p style="text-align:center;color:var(--text-light);padding:1rem">Nog geen uitgaven geregistreerd</p>`}
     </div>`;
 
   // Savings chart (last 6 months)
@@ -814,22 +833,30 @@ function renderDashboard() {
 function renderSavingsChart() {
   const canvas = document.getElementById('chartSavings');
   if (!canvas) return;
-  const labels = [], dataPoints = [], colors = [];
-  for (let i = 5; i >= 0; i--) {
-    const d = new Date(viewDate.getFullYear(), viewDate.getMonth() - i, 1);
-    labels.push(MONTHS_NL[d.getMonth()].slice(0,3));
+  const year = viewDate.getFullYear();
+  const labels = [], dataPoints = [], colors = [], rates = [];
+  for (let m = 0; m < 12; m++) {
+    const d = new Date(year, m, 1);
+    labels.push(MONTHS_NL[m].slice(0,3));
     const txs = txForMonth(d);
+    const hasTx = txs.length > 0;
     const inc = totalIncome(txs);
     const exp = totalExpenses(txs);
-    const saved = inc - exp;
-    dataPoints.push(Math.round(saved * 100) / 100);
-    const sGoal = data.savingsGoal || 0;
-    if (sGoal > 0) {
-      if (saved >= sGoal) colors.push('rgba(22,163,74,.7)');
-      else if (saved >= sGoal * 0.7) colors.push('rgba(234,88,12,.7)');
-      else colors.push('rgba(220,38,38,.7)');
+    const saved = hasTx ? inc - exp : null;
+    const r = hasTx && inc > 0 ? (saved / inc) * 100 : null;
+    dataPoints.push(saved);
+    rates.push(r);
+    if (!hasTx) {
+      colors.push('rgba(200,200,200,.25)');
     } else {
-      colors.push(saved >= 0 ? 'rgba(22,163,74,.7)' : 'rgba(220,38,38,.7)');
+      const sGoal = data.savingsGoal || 0;
+      if (sGoal > 0) {
+        if (saved >= sGoal) colors.push('rgba(22,163,74,.7)');
+        else if (saved >= sGoal * 0.7) colors.push('rgba(234,88,12,.7)');
+        else colors.push('rgba(220,38,38,.7)');
+      } else {
+        colors.push(saved >= 0 ? 'rgba(22,163,74,.7)' : 'rgba(220,38,38,.7)');
+      }
     }
   }
   if (dashCharts.savings) dashCharts.savings.destroy();
@@ -838,7 +865,18 @@ function renderSavingsChart() {
     data: { labels, datasets: [{ data: dataPoints, backgroundColor: colors, borderRadius: 6, maxBarThickness: 40 }] },
     options: {
       responsive: true, maintainAspectRatio: false,
-      plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => eur(ctx.parsed.y) } } },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          filter: ctx => ctx.parsed.y !== null,
+          callbacks: {
+            label: ctx => {
+              const r = rates[ctx.dataIndex];
+              return eur(ctx.parsed.y) + (r !== null ? ' \u2014 ' + pct(r) : '');
+            }
+          }
+        }
+      },
       scales: {
         y: { beginAtZero: true, ticks: { callback: v => '\u20AC' + v }, grid: { color: '#f0f2f5' } },
         x: { grid: { display: false } }
@@ -875,15 +913,15 @@ function renderExpensesChart(topCats) {
 // ============================================================
 function renderBudgetPage() {
   const txs = txForMonth();
+  const hasTx = txs.length > 0;
   const totalBudget = data.categories.reduce((s,c) => s + c.budget, 0);
-  const totalSpent = totalExpenses(txs);
-  const inc = totalIncome(txs);
+  const totalSpent = hasTx ? totalExpenses(txs) : 0;
+  const inc = hasTx ? totalIncome(txs) : 0;
   const totalIncomeBudget = (data.incomeBudgets || []).reduce((s,b) => s + b.amount, 0);
-  const hasBudgets = data.categories.some(c => c.budget > 0) || totalIncomeBudget > 0;
 
   let html = `<div class="card"><h2>Budget vs Realisatie</h2>
-    <p style="font-size:.85rem;color:var(--text-light);margin-bottom:.75rem">Totaal inkomen: ${eur(inc)}${totalIncomeBudget > 0 ? ' van ' + eur(totalIncomeBudget) : ''} — Totaal uitgaven: ${eur(totalSpent)} van ${eur(totalBudget)}</p>
-    <button onclick="openInlineBudgetEdit()" style="display:inline-flex;align-items:center;gap:.4rem;padding:.5rem 1rem;background:var(--primary);color:#fff;border:none;border-radius:8px;font-size:.85rem;font-weight:600;cursor:pointer">✏️ Budgetten invullen / aanpassen</button>
+    <p style="font-size:.85rem;color:var(--text-light);margin-bottom:.75rem">${hasTx ? 'Inkomen: ' + eur(inc) + (totalIncomeBudget > 0 ? ' van ' + eur(totalIncomeBudget) : '') + ' — Uitgaven: ' + eur(totalSpent) + ' van ' + eur(totalBudget) : 'Nog geen transacties deze maand'}</p>
+    <button onclick="openInlineBudgetEdit()" style="display:inline-flex;align-items:center;gap:.4rem;padding:.5rem 1rem;background:var(--primary);color:#fff;border:none;border-radius:8px;font-size:.85rem;font-weight:600;cursor:pointer">✏️ Budget aanpassen</button>
   </div>`;
 
   // ---- INKOMEN SECTIE ----
@@ -891,50 +929,62 @@ function renderBudgetPage() {
 
   const incomeBudgets = data.incomeBudgets || [];
   data.incomeSources.forEach(src => {
-    const received = txs.filter(t => t.type==='income' && t.category === src).reduce((s,t) => s+t.amount, 0);
+    const received = hasTx ? txs.filter(t => t.type==='income' && t.category === src).reduce((s,t) => s+t.amount, 0) : 0;
     const budgetObj = incomeBudgets.find(b => b.name === src);
     const budget = budgetObj ? budgetObj.amount : 0;
-    const pctUsed = budget > 0 ? Math.min((received / budget) * 100, 150) : 0;
-    // For income: green = received enough, orange = getting there, muted = nothing yet
+    const hasReceived = hasTx && received > 0;
+    const pctUsed = budget > 0 && hasReceived ? Math.min((received / budget) * 100, 150) : 0;
     let barClass = 'green';
-    if (budget > 0) {
+    if (budget > 0 && hasReceived) {
       if (pctUsed < 50) barClass = 'orange';
-      else if (pctUsed < 90) barClass = 'green';
     }
+
+    const amountText = hasReceived ? eur(received) + (budget > 0 ? ' / ' + eur(budget) : '') : (budget > 0 ? 'Budget: ' + eur(budget) : '—');
+    const statusText = hasReceived
+      ? (budget > 0 ? (received >= budget ? 'Ontvangen!' : eur(budget - received) + ' verwacht') : eur(received) + ' ontvangen')
+      : (budget > 0 ? 'Nog geen inkomen geregistreerd' : 'Geen budget ingesteld');
 
     html += `
     <div class="budget-cat">
       <div class="budget-cat-header">
         <span class="cat-title">${escHtml(src)}</span>
-        <span class="cat-amounts">${eur(received)}${budget > 0 ? ' / ' + eur(budget) : ''}</span>
+        <span class="cat-amounts">${amountText}</span>
       </div>
-      ${budget > 0 ? `<div class="progress-bar"><div class="fill ${barClass}" style="width:${Math.min(pctUsed,100)}%"></div></div>` : ''}
-      <div class="remaining">${budget > 0 ? (received >= budget ? 'Ontvangen!' : eur(budget - received) + ' verwacht') : (received > 0 ? eur(received) + ' ontvangen' : 'Nog geen inkomen')}</div>
+      ${budget > 0 && hasReceived ? `<div class="progress-bar"><div class="fill ${barClass}" style="width:${Math.min(pctUsed,100)}%"></div></div>` : ''}
+      <div class="remaining">${statusText}</div>
     </div>`;
   });
 
   // ---- SPAREN SECTIE ----
   const savingsGoalAmt = data.savingsGoal || 0;
-  const actualSaved = inc - totalExpenses(txs);
   if (savingsGoalAmt > 0) {
-    const savPct = savingsGoalAmt > 0 ? Math.min((actualSaved / savingsGoalAmt) * 100, 150) : 0;
+    const actualSaved = hasTx ? inc - totalSpent : 0;
+    const hasActual = hasTx;
+    const savPct = hasActual && savingsGoalAmt > 0 ? Math.min((actualSaved / savingsGoalAmt) * 100, 150) : 0;
     const savRemaining = savingsGoalAmt - actualSaved;
     let savBar = 'green';
-    if (savPct < 50) savBar = 'red';
-    else if (savPct < 90) savBar = 'orange';
-    const savRatePct = inc > 0 ? (actualSaved / inc) * 100 : 0;
+    if (hasActual) {
+      if (savPct < 50) savBar = 'red';
+      else if (savPct < 90) savBar = 'orange';
+    }
+    const savRatePct = hasActual && inc > 0 ? (actualSaved / inc) * 100 : 0;
+
+    const savAmountText = hasActual ? eur(actualSaved) + ' / ' + eur(savingsGoalAmt) : 'Doel: ' + eur(savingsGoalAmt);
+    const savStatusText = hasActual
+      ? (savRemaining > 0 ? eur(savRemaining) + ' nog te sparen' : 'Doel behaald!')
+      : 'Nog geen transacties geregistreerd';
 
     html += `<div style="margin-bottom:.3rem;margin-top:.5rem;padding:0 .2rem"><h3 style="font-size:.95rem;color:var(--primary);display:flex;align-items:center;gap:.4rem">🏦 Sparen</h3></div>`;
     html += `
     <div class="budget-cat">
       <div class="budget-cat-header">
         <span class="cat-title">Spaardoel</span>
-        <span class="cat-amounts">${eur(actualSaved)} / ${eur(savingsGoalAmt)}</span>
+        <span class="cat-amounts">${savAmountText}</span>
       </div>
-      <div class="progress-bar"><div class="fill ${savBar}" style="width:${Math.min(Math.max(savPct,0),100)}%"></div></div>
-      <div class="remaining ${savRemaining > 0 ? '' : 'over'}" style="display:flex;justify-content:space-between">
-        <span>${savRemaining > 0 ? eur(savRemaining) + ' nog te sparen' : 'Doel behaald!'}</span>
-        <span style="color:var(--text-light)">Spaarpercentage: ${pct(savRatePct)}</span>
+      ${hasActual ? `<div class="progress-bar"><div class="fill ${savBar}" style="width:${Math.min(Math.max(savPct,0),100)}%"></div></div>` : ''}
+      <div class="remaining" style="display:flex;justify-content:space-between">
+        <span>${savStatusText}</span>
+        ${hasActual && inc > 0 ? `<span style="color:var(--text-light)">Spaarquote: ${pct(savRatePct)}</span>` : ''}
       </div>
     </div>`;
   }
@@ -943,19 +993,30 @@ function renderBudgetPage() {
   html += `<div style="margin-bottom:.3rem;margin-top:1rem;padding:0 .2rem"><h3 style="font-size:.95rem;color:var(--red);display:flex;align-items:center;gap:.4rem">💸 Uitgaven</h3></div>`;
 
   data.categories.forEach(c => {
-    const spent = txs.filter(t => t.type==='expense' && t.category === c.name).reduce((s,t) => s+t.amount, 0);
+    const spent = hasTx ? txs.filter(t => t.type==='expense' && t.category === c.name).reduce((s,t) => s+t.amount, 0) : 0;
+    const hasSpent = hasTx && spent > 0;
     const budget = c.budget || 0;
-    const pctUsed = budget > 0 ? Math.min((spent / budget) * 100, 150) : 0;
+    const pctUsed = budget > 0 && hasSpent ? Math.min((spent / budget) * 100, 150) : 0;
     const remaining = budget - spent;
     let barClass = 'green';
-    if (budget > 0) {
+    if (budget > 0 && hasSpent) {
       if (pctUsed >= 100) barClass = 'red';
       else if (pctUsed >= 85) barClass = 'orange';
     }
 
+    const amountText = hasSpent ? eur(spent) + (budget > 0 ? ' / ' + eur(budget) : '') : (budget > 0 ? 'Budget: ' + eur(budget) : '—');
+    let statusText;
+    if (hasSpent && budget > 0) {
+      statusText = remaining >= 0 ? eur(remaining) + ' over' : eur(Math.abs(remaining)) + ' over budget!';
+    } else if (hasSpent) {
+      statusText = eur(spent) + ' besteed';
+    } else {
+      statusText = 'Nog geen uitgaven geregistreerd';
+    }
+
     // Sub breakdown
     let subHtml = '';
-    if (c.subs && c.subs.length > 0) {
+    if (c.subs && c.subs.length > 0 && hasSpent) {
       subHtml = '<div class="sub-breakdown" id="sub_' + c.name.replace(/[^a-zA-Z0-9]/g,'_') + '">';
       c.subs.forEach(s => {
         const subSpent = txs.filter(t => t.type==='expense' && t.category === c.name && t.subcategory === s).reduce((sum,t)=>sum+t.amount,0);
@@ -970,10 +1031,10 @@ function renderBudgetPage() {
     <div class="budget-cat" onclick="toggleSubBreakdown('${c.name.replace(/[^a-zA-Z0-9]/g,'_')}')">
       <div class="budget-cat-header">
         <span class="cat-title">${escHtml(c.name)}</span>
-        <span class="cat-amounts">${eur(spent)} / ${budget > 0 ? eur(budget) : '—'}</span>
+        <span class="cat-amounts">${amountText}</span>
       </div>
-      ${budget > 0 ? `<div class="progress-bar"><div class="fill ${barClass}" style="width:${Math.min(pctUsed,100)}%"></div></div>` : ''}
-      <div class="remaining ${remaining < 0 ? 'over' : ''}">${budget > 0 ? (remaining >= 0 ? `${eur(remaining)} over` : `${eur(Math.abs(remaining))} over budget!`) : (spent > 0 ? `${eur(spent)} besteed` : 'Geen transacties')}</div>
+      ${budget > 0 && hasSpent ? `<div class="progress-bar"><div class="fill ${barClass}" style="width:${Math.min(pctUsed,100)}%"></div></div>` : ''}
+      <div class="remaining ${hasSpent && remaining < 0 ? 'over' : ''}">${statusText}</div>
       ${subHtml}
     </div>`;
   });
