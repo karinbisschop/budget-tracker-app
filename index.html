@@ -227,6 +227,20 @@ input,select,textarea{font-family:inherit;font-size:.95rem}
   .modal{border-radius:20px;max-height:80vh}
 }
 
+.badge-mt{display:inline-block;font-size:.65rem;font-weight:700;background:#eef2ff;color:var(--primary);padding:.15rem .45rem;border-radius:6px;margin-left:.4rem;vertical-align:middle;letter-spacing:.02em}
+
+.fab-menu{position:fixed;bottom:5rem;right:1rem;z-index:96;display:none;flex-direction:column;align-items:flex-end;gap:.5rem;padding-bottom:3.5rem}
+.fab-menu.active{display:flex}
+.fab-menu-item{display:flex;align-items:center;gap:.5rem;background:var(--card);padding:.6rem 1rem;border-radius:12px;box-shadow:0 4px 16px rgba(0,0,0,.15);font-size:.88rem;font-weight:600;cursor:pointer;border:none;white-space:nowrap;transition:transform .15s}
+.fab-menu-item:hover{transform:scale(1.03)}
+.fab-menu-item .fm-icon{font-size:1.1rem}
+.fab-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.2);z-index:94;display:none}
+.fab-backdrop.active{display:block}
+
+.mt-progress{background:var(--bg);border-radius:10px;padding:.75rem 1rem;margin-bottom:1rem;text-align:center;font-size:.85rem;font-weight:600;position:sticky;top:0;z-index:1}
+.mt-progress .mt-bar{height:6px;background:var(--border);border-radius:6px;margin-top:.4rem;overflow:hidden}
+.mt-progress .mt-bar-fill{height:100%;border-radius:6px;background:var(--primary);transition:width .3s}
+
 .hidden{display:none !important}
 </style>
 </head>
@@ -289,8 +303,13 @@ input,select,textarea{font-family:inherit;font-size:.95rem}
     <div id="settingsContent"></div>
   </div>
 
-  <!-- FAB -->
-  <button class="fab" id="fabAdd" title="Transactie toevoegen">+</button>
+  <!-- FAB Menu -->
+  <div class="fab-backdrop" id="fabBackdrop"></div>
+  <div class="fab-menu" id="fabMenu">
+    <button class="fab-menu-item" onclick="closeFabMenu();openMonthlyTotalModal()"><span class="fm-icon">📋</span>Maandtotaal invoeren</button>
+    <button class="fab-menu-item" onclick="closeFabMenu();openModal()"><span class="fm-icon">➕</span>Losse transactie</button>
+  </div>
+  <button class="fab" id="fabAdd" title="Toevoegen">+</button>
 
   <!-- Bottom Nav -->
   <nav class="bottom-nav">
@@ -344,6 +363,26 @@ input,select,textarea{font-family:inherit;font-size:.95rem}
     <div class="modal-actions">
       <button class="cancel" onclick="closeEditModal()">Annuleren</button>
       <button class="save" onclick="saveEditModal()">Opslaan</button>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== MONTHLY TOTAL MODAL ==================== -->
+<div class="modal-overlay" id="mtModal">
+  <div class="modal">
+    <h2>Maandtotaal invoeren</h2>
+    <div class="field">
+      <label>Maand</label>
+      <input type="month" id="mtMonth">
+    </div>
+    <div class="mt-progress" id="mtProgress">
+      <span id="mtProgressText">Totaal ingevuld: €0 van €0 budget</span>
+      <div class="mt-bar"><div class="mt-bar-fill" id="mtBarFill" style="width:0%"></div></div>
+    </div>
+    <div id="mtBody"></div>
+    <div class="modal-actions">
+      <button class="cancel" onclick="closeMonthlyTotalModal()">Annuleren</button>
+      <button class="save" onclick="saveMonthlyTotal()">Opslaan</button>
     </div>
   </div>
 </div>
@@ -661,13 +700,27 @@ function setupNav() {
     document.getElementById(id).addEventListener('click', () => { viewDate.setMonth(viewDate.getMonth()+1); refreshAll(); });
   });
 
-  document.getElementById('fabAdd').addEventListener('click', () => openModal());
+  document.getElementById('fabAdd').addEventListener('click', toggleFabMenu);
+  document.getElementById('fabBackdrop').addEventListener('click', closeFabMenu);
+}
+
+function toggleFabMenu() {
+  const menu = document.getElementById('fabMenu');
+  const bd = document.getElementById('fabBackdrop');
+  const isOpen = menu.classList.contains('active');
+  menu.classList.toggle('active', !isOpen);
+  bd.classList.toggle('active', !isOpen);
+}
+function closeFabMenu() {
+  document.getElementById('fabMenu').classList.remove('active');
+  document.getElementById('fabBackdrop').classList.remove('active');
 }
 
 function refreshAll() {
   const ml = monthLabel(viewDate);
-  document.getElementById('headerMonth').textContent = ml;
-  ['dashMonth','budMonth','txMonth'].forEach(id => document.getElementById(id).textContent = ml);
+  const mtBadge = hasMonthlyTotal() ? ' <span class="badge-mt">Maandtotaal</span>' : '';
+  document.getElementById('headerMonth').innerHTML = ml + mtBadge;
+  ['dashMonth','budMonth','txMonth'].forEach(id => document.getElementById(id).innerHTML = ml + mtBadge);
   renderDashboard();
   renderBudgetPage();
   renderTransactions();
@@ -1120,7 +1173,7 @@ function renderTransactions() {
     <div class="tx-item">
       <div class="tx-icon ${t.type}">${t.type==='income'?'💰':'💸'}</div>
       <div class="tx-info">
-        <div class="tx-desc">${escHtml(t.note || t.category)}</div>
+        <div class="tx-desc">${escHtml(t.note || t.category)}${t.monthlyTotal ? ' <span class="badge-mt">Maandtotaal</span>' : ''}</div>
         <div class="tx-cat">${escHtml(t.category)}${t.subcategory ? ' › ' + escHtml(t.subcategory) : ''}</div>
       </div>
       <div class="tx-amount ${t.type}">${t.type==='income'?'+':'−'}${eur(t.amount)}</div>
@@ -1216,6 +1269,107 @@ function saveTransaction() {
 
   closeModal();
   refreshAll();
+}
+
+// ============================================================
+//  MONTHLY TOTAL
+// ============================================================
+function openMonthlyTotalModal() {
+  // Default to current viewDate month
+  const y = viewDate.getFullYear();
+  const m = String(viewDate.getMonth() + 1).padStart(2, '0');
+  document.getElementById('mtMonth').value = `${y}-${m}`;
+  renderMtBody();
+  document.getElementById('mtModal').classList.add('active');
+}
+
+function closeMonthlyTotalModal() {
+  document.getElementById('mtModal').classList.remove('active');
+}
+
+function renderMtBody() {
+  const body = document.getElementById('mtBody');
+  const totalBudgetExp = data.categories.reduce((s, c) => s + (c.budget || 0), 0);
+  const totalBudgetInc = (data.incomeBudgets || []).reduce((s, b) => s + b.amount, 0);
+  const totalBudget = totalBudgetInc + totalBudgetExp;
+
+  let html = '<h3 style="font-size:.9rem;color:var(--green);margin-bottom:.5rem">💰 Inkomen</h3><div class="budget-list" style="margin-bottom:1rem">';
+  data.incomeSources.forEach(src => {
+    const budgetObj = (data.incomeBudgets || []).find(b => b.name === src);
+    const budget = budgetObj ? budgetObj.amount : 0;
+    html += `<div class="budget-row">
+      <span class="euro">€</span>
+      <span class="cat-label">${escHtml(src)}${budget > 0 ? ' <span style="font-size:.72rem;color:var(--text-light);font-weight:400">(budget: ' + eur(budget) + ')</span>' : ''}</span>
+      <input type="number" min="0" step="0.01" placeholder="0" class="mt-input" data-mt-type="income" data-mt-cat="${escHtml(src)}" oninput="updateMtProgress()">
+    </div>`;
+  });
+  html += '</div>';
+
+  html += '<h3 style="font-size:.9rem;color:var(--red);margin-bottom:.5rem">💸 Uitgaven</h3><div class="budget-list">';
+  data.categories.forEach(c => {
+    const budget = c.budget || 0;
+    html += `<div class="budget-row">
+      <span class="euro">€</span>
+      <span class="cat-label">${escHtml(c.name)}${budget > 0 ? ' <span style="font-size:.72rem;color:var(--text-light);font-weight:400">(budget: ' + eur(budget) + ')</span>' : ''}</span>
+      <input type="number" min="0" step="0.01" placeholder="0" class="mt-input" data-mt-type="expense" data-mt-cat="${escHtml(c.name)}" oninput="updateMtProgress()">
+    </div>`;
+  });
+  html += '</div>';
+  body.innerHTML = html;
+  updateMtProgress();
+}
+
+function updateMtProgress() {
+  let totalFilled = 0;
+  document.querySelectorAll('.mt-input').forEach(inp => {
+    totalFilled += parseFloat(inp.value) || 0;
+  });
+  const totalBudgetExp = data.categories.reduce((s, c) => s + (c.budget || 0), 0);
+  const totalBudgetInc = (data.incomeBudgets || []).reduce((s, b) => s + b.amount, 0);
+  const totalBudget = totalBudgetInc + totalBudgetExp;
+  const pctFill = totalBudget > 0 ? Math.min((totalFilled / totalBudget) * 100, 100) : 0;
+
+  document.getElementById('mtProgressText').textContent = `Totaal ingevuld: ${eur(totalFilled)}${totalBudget > 0 ? ' van ' + eur(totalBudget) + ' budget' : ''}`;
+  document.getElementById('mtBarFill').style.width = pctFill + '%';
+}
+
+function saveMonthlyTotal() {
+  const monthVal = document.getElementById('mtMonth').value;
+  if (!monthVal) return;
+  const [year, month] = monthVal.split('-').map(Number);
+  // Use the 15th of the month as date
+  const dateStr = `${year}-${String(month).padStart(2,'0')}-15`;
+
+  // Remove any existing monthly total transactions for this month
+  const mk = `${year}-${String(month).padStart(2,'0')}`;
+  data.transactions = data.transactions.filter(t => !(t.monthlyTotal && t.date.substring(0, 7) === mk));
+
+  // Add new transactions for each filled-in category
+  document.querySelectorAll('.mt-input').forEach(inp => {
+    const amount = parseFloat(inp.value) || 0;
+    if (amount <= 0) return;
+    data.transactions.push({
+      id: uid(),
+      type: inp.dataset.mtType,
+      category: inp.dataset.mtCat,
+      subcategory: '',
+      amount,
+      date: dateStr,
+      note: 'Maandtotaal',
+      monthlyTotal: true
+    });
+  });
+
+  saveData(data);
+  viewDate = new Date(year, month - 1, 1);
+  closeMonthlyTotalModal();
+  refreshAll();
+}
+
+// Check if a month has monthly total entries
+function hasMonthlyTotal(d) {
+  const mk = monthKey(d || viewDate);
+  return (data.transactions || []).some(t => t.monthlyTotal && t.date.substring(0, 7) === mk);
 }
 
 // ============================================================
