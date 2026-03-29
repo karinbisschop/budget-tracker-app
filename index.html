@@ -196,6 +196,26 @@ input,select,textarea{font-family:inherit;font-size:.95rem}
 /* chart container */
 .chart-container{position:relative;height:220px;margin-bottom:.5rem}
 
+/* ========== BUDGET SUMMARY TABLE ========== */
+.bsum{border-collapse:collapse;width:100%;font-size:.85rem}
+.bsum th{text-align:left;font-size:.7rem;text-transform:uppercase;letter-spacing:.04em;color:var(--text-light);padding:.4rem .3rem;border-bottom:2px solid var(--border)}
+.bsum th:not(:first-child){text-align:right}
+.bsum td{padding:.45rem .3rem;border-bottom:1px solid var(--border)}
+.bsum td:not(:first-child){text-align:right;font-variant-numeric:tabular-nums}
+.bsum tr:last-child td{border-bottom:none}
+.bsum .row-label{font-weight:500;color:var(--text-light)}
+.bsum .row-total td{font-weight:700;border-top:2px solid var(--text);border-bottom:none;padding-top:.55rem}
+.bsum .val-green{color:var(--green)}
+.bsum .val-red{color:var(--red)}
+.bsum .val-blue{color:var(--blue)}
+.bsum .formula{font-size:.75rem;color:var(--text-light);font-weight:400}
+
+.verdict-bar{margin-top:1rem;padding:.85rem 1rem;border-radius:12px;text-align:center;font-weight:700;font-size:.95rem}
+.verdict-bar .verdict-sub{font-weight:500;font-size:.82rem;margin-top:.2rem;opacity:.85}
+.verdict-bar.on-track{background:var(--green-bg);color:var(--green)}
+.verdict-bar.close{background:var(--orange-bg);color:var(--orange)}
+.verdict-bar.off-track{background:var(--red-bg);color:var(--red)}
+
 /* ========== RESPONSIVE ========== */
 @media(max-width:380px){
   .summary-row{grid-template-columns:1fr;gap:.4rem}
@@ -678,15 +698,7 @@ function renderDashboard() {
   const inc = totalIncome(txs);
   const exp = totalExpenses(txs);
   const saved = inc - exp;
-  const rate = inc > 0 ? (saved / inc) * 100 : 0;
   const savingsGoal = data.savingsGoal || 0;
-
-  let rateColor = 'var(--green)';
-  let rateLabel = 'Op schema!';
-  if (savingsGoal > 0) {
-    if (saved < savingsGoal * 0.7) { rateColor = 'var(--red)'; rateLabel = 'Onder doel'; }
-    else if (saved < savingsGoal) { rateColor = 'var(--orange)'; rateLabel = 'Bijna op doel'; }
-  }
 
   // Alerts
   let alerts = '';
@@ -703,25 +715,88 @@ function renderDashboard() {
   txs.filter(t=>t.type==='expense').forEach(t => { expByCat[t.category] = (expByCat[t.category]||0) + t.amount; });
   const topCats = Object.entries(expByCat).sort((a,b)=>b[1]-a[1]).slice(0,6);
 
+  // ---- Planned totals ----
+  const plannedInc = (data.incomeBudgets || []).reduce((s,b) => s + b.amount, 0);
+  const plannedExp = data.categories.reduce((s,c) => s + (c.budget || 0), 0);
+  const plannedSaved = plannedInc - plannedExp;
+  const plannedRate = plannedInc > 0 ? (plannedSaved / plannedInc) * 100 : 0;
+
+  // ---- Actual totals ----
+  const actualRate = inc > 0 ? (saved / inc) * 100 : 0;
+
+  // ---- Difference ----
+  const diffSaved = saved - plannedSaved;
+  const diffClass = diffSaved >= 0 ? 'val-green' : 'val-red';
+  const diffSign = diffSaved >= 0 ? '+' : '';
+
+  // ---- Verdict ----
+  let verdictClass, verdictText, verdictSub;
+  if (savingsGoal > 0) {
+    if (saved >= savingsGoal) {
+      verdictClass = 'on-track'; verdictText = 'Op schema!';
+      verdictSub = `Je spaart ${eur(saved)} — doel is ${eur(savingsGoal)}`;
+    } else if (saved >= savingsGoal * 0.7) {
+      verdictClass = 'close'; verdictText = 'Bijna op doel';
+      verdictSub = `Nog ${eur(savingsGoal - saved)} te gaan tot je doel van ${eur(savingsGoal)}`;
+    } else {
+      verdictClass = 'off-track'; verdictText = 'Onder doel';
+      verdictSub = `Nog ${eur(savingsGoal - saved)} te gaan tot je doel van ${eur(savingsGoal)}`;
+    }
+  } else if (plannedSaved > 0) {
+    if (saved >= plannedSaved) {
+      verdictClass = 'on-track'; verdictText = 'Op schema!';
+      verdictSub = `Je spaart ${eur(diffSaved)} meer dan gepland`;
+    } else if (saved >= plannedSaved * 0.7) {
+      verdictClass = 'close'; verdictText = 'Bijna op schema';
+      verdictSub = `Je spaart ${eur(Math.abs(diffSaved))} minder dan gepland`;
+    } else {
+      verdictClass = 'off-track'; verdictText = 'Onder budget';
+      verdictSub = `Je spaart ${eur(Math.abs(diffSaved))} minder dan gepland`;
+    }
+  } else {
+    verdictClass = saved >= 0 ? 'on-track' : 'off-track';
+    verdictText = saved >= 0 ? 'Positief saldo' : 'Meer uitgegeven dan ontvangen';
+    verdictSub = `Saldo deze maand: ${eur(saved)}`;
+  }
+
   document.getElementById('dashContent').innerHTML = `
-    <div class="card" style="text-align:center">
-      <div class="savings-ring">
-        <div class="ring-value" style="color:${rateColor}">${eur(saved)}</div>
-        <div class="ring-label">Gespaard deze maand (${pct(rate)})</div>
-        ${savingsGoal > 0 ? `<div class="ring-goal" style="color:${rateColor}">${rateLabel} — doel: ${eur(savingsGoal)}</div>` : ''}
+    <div class="card">
+      <h2>Maandoverzicht</h2>
+      <table class="bsum">
+        <thead>
+          <tr><th></th><th>Gepland</th><th>Werkelijk</th><th>Verschil</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="row-label">Inkomen</td>
+            <td class="val-green">${plannedInc > 0 ? eur(plannedInc) : '—'}</td>
+            <td class="val-green">${eur(inc)}</td>
+            <td class="${inc - plannedInc >= 0 ? 'val-green' : 'val-red'}">${plannedInc > 0 ? (inc - plannedInc >= 0 ? '+' : '') + eur(inc - plannedInc) : '—'}</td>
+          </tr>
+          <tr>
+            <td class="row-label">Uitgaven</td>
+            <td class="val-red">${plannedExp > 0 ? eur(plannedExp) : '—'}</td>
+            <td class="val-red">${eur(exp)}</td>
+            <td class="${exp - plannedExp <= 0 ? 'val-green' : 'val-red'}">${plannedExp > 0 ? (exp <= plannedExp ? '' : '+') + eur(exp - plannedExp) : '—'}</td>
+          </tr>
+          <tr class="row-total">
+            <td><span class="formula">Inkomen − Uitgaven =</span></td>
+            <td class="val-blue">${plannedInc > 0 || plannedExp > 0 ? eur(plannedSaved) : '—'}${plannedInc > 0 ? ' <span class="formula">(' + pct(plannedRate) + ')</span>' : ''}</td>
+            <td class="val-blue">${eur(saved)}${inc > 0 ? ' <span class="formula">(' + pct(actualRate) + ')</span>' : ''}</td>
+            <td class="${diffClass}">${plannedInc > 0 || plannedExp > 0 ? diffSign + eur(diffSaved) : '—'}</td>
+          </tr>
+        </tbody>
+      </table>
+      <div class="verdict-bar ${verdictClass}">
+        ${verdictText}
+        <div class="verdict-sub">${verdictSub}</div>
       </div>
     </div>
 
-    <div class="summary-row">
-      <div class="sum-card income"><div class="label">Inkomen</div><div class="value">${eur(inc)}</div></div>
-      <div class="sum-card expenses"><div class="label">Uitgaven</div><div class="value">${eur(exp)}</div></div>
-      <div class="sum-card saved"><div class="label">Gespaard</div><div class="value">${eur(saved)}</div></div>
-    </div>
-
-    ${alerts ? `<div class="card"><h2>⚠️ Waarschuwingen</h2>${alerts}</div>` : ''}
+    ${alerts ? `<div class="card"><h2>Waarschuwingen</h2>${alerts}</div>` : ''}
 
     <div class="card">
-      <h2>Spaarpercentage per maand</h2>
+      <h2>Gespaard per maand</h2>
       <div class="chart-container"><canvas id="chartSavings"></canvas></div>
     </div>
 
@@ -747,8 +822,7 @@ function renderSavingsChart() {
     const inc = totalIncome(txs);
     const exp = totalExpenses(txs);
     const saved = inc - exp;
-    const r = inc > 0 ? ((inc-exp)/inc)*100 : 0;
-    dataPoints.push(Math.round(r*10)/10);
+    dataPoints.push(Math.round(saved * 100) / 100);
     const sGoal = data.savingsGoal || 0;
     if (sGoal > 0) {
       if (saved >= sGoal) colors.push('rgba(22,163,74,.7)');
@@ -764,9 +838,9 @@ function renderSavingsChart() {
     data: { labels, datasets: [{ data: dataPoints, backgroundColor: colors, borderRadius: 6, maxBarThickness: 40 }] },
     options: {
       responsive: true, maintainAspectRatio: false,
-      plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => pct(ctx.parsed.y) } } },
+      plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => eur(ctx.parsed.y) } } },
       scales: {
-        y: { beginAtZero: true, ticks: { callback: v => v + '%' }, grid: { color: '#f0f2f5' } },
+        y: { beginAtZero: true, ticks: { callback: v => '\u20AC' + v }, grid: { color: '#f0f2f5' } },
         x: { grid: { display: false } }
       }
     }
