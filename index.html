@@ -387,7 +387,7 @@ let obSelectedIncome = new Set(['Salaris']);
 let obCategories = JSON.parse(JSON.stringify(DEFAULT_CATEGORIES));
 let obSelectedCats = {};
 let obBudgets = {};
-let obSavingsRate = '';
+let obSavingsMonthly = '';
 let obSavingsYearly = '';
 
 function initOnboarding() {
@@ -557,16 +557,16 @@ function renderObBudgets(el) {
 function renderObSavings(el) {
   el.innerHTML = `
     <h2>Stap 4: Spaardoel</h2>
-    <p class="subtitle">Optioneel — je kunt dit later altijd aanpassen</p>
+    <p class="subtitle">Hoeveel wil je elke maand opzij zetten? Het spaarpercentage wordt automatisch berekend.</p>
     <div class="savings-field">
-      <label>Spaarpercentage per maand (%)</label>
-      <input type="number" id="savRate" placeholder="bijv. 20" min="0" max="100" value="${obSavingsRate}">
-      <div class="hint">Welk percentage van je inkomen wil je sparen?</div>
+      <label>Spaarbedrag per maand (€)</label>
+      <input type="number" id="savMonthly" placeholder="bijv. 500" min="0" value="${obSavingsMonthly}">
+      <div class="hint">Dit bedrag verschijnt als aparte categorie "Sparen" in je budget</div>
     </div>
     <div class="savings-field">
-      <label>Jaarlijks spaardoel (€)</label>
-      <input type="number" id="savYearly" placeholder="bijv. 5000" min="0" value="${obSavingsYearly}">
-      <div class="hint">Optioneel totaal spaarbedrag per jaar</div>
+      <label>Jaarlijks spaardoel (€) — optioneel</label>
+      <input type="number" id="savYearly" placeholder="bijv. 6000" min="0" value="${obSavingsYearly}">
+      <div class="hint">Optioneel totaal dat je dit jaar wilt sparen</div>
     </div>
     <div class="ob-actions">
       <button class="ob-btn secondary" onclick="obPrev()">← Terug</button>
@@ -589,9 +589,9 @@ function obNext() {
 function obPrev() { obStep = Math.max(obStep - 1, 1); renderObStep(); }
 
 function finishOnboarding() {
-  const rate = document.getElementById('savRate');
+  const monthly = document.getElementById('savMonthly');
   const yearly = document.getElementById('savYearly');
-  obSavingsRate = rate ? rate.value : '';
+  obSavingsMonthly = monthly ? monthly.value : '';
   obSavingsYearly = yearly ? yearly.value : '';
 
   const categories = obCategories
@@ -605,7 +605,7 @@ function finishOnboarding() {
   data = {
     incomeSources: [...obSelectedIncome],
     categories,
-    savingsRateGoal: parseFloat(obSavingsRate) || 0,
+    savingsGoal: parseFloat(obSavingsMonthly) || 0,
     savingsYearlyGoal: parseFloat(obSavingsYearly) || 0,
     transactions: []
   };
@@ -679,13 +679,13 @@ function renderDashboard() {
   const exp = totalExpenses(txs);
   const saved = inc - exp;
   const rate = inc > 0 ? (saved / inc) * 100 : 0;
-  const goal = data.savingsRateGoal || 0;
+  const savingsGoal = data.savingsGoal || 0;
 
   let rateColor = 'var(--green)';
   let rateLabel = 'Op schema!';
-  if (goal > 0) {
-    if (rate < goal * 0.7) { rateColor = 'var(--red)'; rateLabel = 'Onder doel'; }
-    else if (rate < goal) { rateColor = 'var(--orange)'; rateLabel = 'Bijna op doel'; }
+  if (savingsGoal > 0) {
+    if (saved < savingsGoal * 0.7) { rateColor = 'var(--red)'; rateLabel = 'Onder doel'; }
+    else if (saved < savingsGoal) { rateColor = 'var(--orange)'; rateLabel = 'Bijna op doel'; }
   }
 
   // Alerts
@@ -706,9 +706,9 @@ function renderDashboard() {
   document.getElementById('dashContent').innerHTML = `
     <div class="card" style="text-align:center">
       <div class="savings-ring">
-        <div class="ring-value" style="color:${rateColor}">${pct(rate)}</div>
-        <div class="ring-label">Spaarpercentage deze maand</div>
-        ${goal > 0 ? `<div class="ring-goal" style="color:${rateColor}">${rateLabel} — doel: ${pct(goal)}</div>` : ''}
+        <div class="ring-value" style="color:${rateColor}">${eur(saved)}</div>
+        <div class="ring-label">Gespaard deze maand (${pct(rate)})</div>
+        ${savingsGoal > 0 ? `<div class="ring-goal" style="color:${rateColor}">${rateLabel} — doel: ${eur(savingsGoal)}</div>` : ''}
       </div>
     </div>
 
@@ -746,15 +746,16 @@ function renderSavingsChart() {
     const txs = txForMonth(d);
     const inc = totalIncome(txs);
     const exp = totalExpenses(txs);
+    const saved = inc - exp;
     const r = inc > 0 ? ((inc-exp)/inc)*100 : 0;
     dataPoints.push(Math.round(r*10)/10);
-    const goal = data.savingsRateGoal || 0;
-    if (goal > 0) {
-      if (r >= goal) colors.push('rgba(22,163,74,.7)');
-      else if (r >= goal * 0.7) colors.push('rgba(234,88,12,.7)');
+    const sGoal = data.savingsGoal || 0;
+    if (sGoal > 0) {
+      if (saved >= sGoal) colors.push('rgba(22,163,74,.7)');
+      else if (saved >= sGoal * 0.7) colors.push('rgba(234,88,12,.7)');
       else colors.push('rgba(220,38,38,.7)');
     } else {
-      colors.push(r >= 0 ? 'rgba(22,163,74,.7)' : 'rgba(220,38,38,.7)');
+      colors.push(saved >= 0 ? 'rgba(22,163,74,.7)' : 'rgba(220,38,38,.7)');
     }
   }
   if (dashCharts.savings) dashCharts.savings.destroy();
@@ -838,6 +839,32 @@ function renderBudgetPage() {
     </div>`;
   });
 
+  // ---- SPAREN SECTIE ----
+  const savingsGoalAmt = data.savingsGoal || 0;
+  const actualSaved = inc - totalExpenses(txs);
+  if (savingsGoalAmt > 0) {
+    const savPct = savingsGoalAmt > 0 ? Math.min((actualSaved / savingsGoalAmt) * 100, 150) : 0;
+    const savRemaining = savingsGoalAmt - actualSaved;
+    let savBar = 'green';
+    if (savPct < 50) savBar = 'red';
+    else if (savPct < 90) savBar = 'orange';
+    const savRatePct = inc > 0 ? (actualSaved / inc) * 100 : 0;
+
+    html += `<div style="margin-bottom:.3rem;margin-top:.5rem;padding:0 .2rem"><h3 style="font-size:.95rem;color:var(--primary);display:flex;align-items:center;gap:.4rem">🏦 Sparen</h3></div>`;
+    html += `
+    <div class="budget-cat">
+      <div class="budget-cat-header">
+        <span class="cat-title">Spaardoel</span>
+        <span class="cat-amounts">${eur(actualSaved)} / ${eur(savingsGoalAmt)}</span>
+      </div>
+      <div class="progress-bar"><div class="fill ${savBar}" style="width:${Math.min(Math.max(savPct,0),100)}%"></div></div>
+      <div class="remaining ${savRemaining > 0 ? '' : 'over'}" style="display:flex;justify-content:space-between">
+        <span>${savRemaining > 0 ? eur(savRemaining) + ' nog te sparen' : 'Doel behaald!'}</span>
+        <span style="color:var(--text-light)">Spaarpercentage: ${pct(savRatePct)}</span>
+      </div>
+    </div>`;
+  }
+
   // ---- UITGAVEN SECTIE ----
   html += `<div style="margin-bottom:.3rem;margin-top:1rem;padding:0 .2rem"><h3 style="font-size:.95rem;color:var(--red);display:flex;align-items:center;gap:.4rem">💸 Uitgaven</h3></div>`;
 
@@ -894,6 +921,9 @@ function openInlineBudgetEdit() {
   data.categories.forEach(c => {
     html += `<div class="budget-row"><span class="euro">€</span><span class="cat-label">${escHtml(c.name)}</span><input type="number" min="0" step="1" value="${c.budget||''}" placeholder="0" data-cat="${escHtml(c.name)}"></div>`;
   });
+  html += '</div>';
+  html += '<h3 style="font-size:.9rem;color:var(--primary);margin-bottom:.5rem;margin-top:1.2rem">🏦 Sparen per maand</h3><div class="budget-list">';
+  html += `<div class="budget-row"><span class="euro">€</span><span class="cat-label">Spaardoel</span><input type="number" min="0" step="1" value="${data.savingsGoal||''}" placeholder="0" id="allBudgetsSavGoal"></div>`;
   html += '</div>';
   openEditModal('Alle budgetten invullen', html);
 }
@@ -1084,7 +1114,7 @@ function renderSettings() {
       <h3>🎯 Spaardoelen</h3>
       <button class="settings-btn" onclick="editSavingsGoals()">
         <div class="label">Spaardoel aanpassen</div>
-        <div class="desc">${data.savingsRateGoal ? 'Maandelijks: ' + pct(data.savingsRateGoal) + ' sparen' : 'Nog niet ingesteld — klik hier'}${data.savingsYearlyGoal ? ' — Jaarlijks doel: ' + eur(data.savingsYearlyGoal) : ''}</div>
+        <div class="desc">${data.savingsGoal ? 'Maandelijks: ' + eur(data.savingsGoal) + ' sparen' : 'Nog niet ingesteld — klik hier'}${data.savingsYearlyGoal ? ' — Jaarlijks doel: ' + eur(data.savingsYearlyGoal) : ''}</div>
       </button>
     </div>
 
@@ -1158,11 +1188,12 @@ function editSavingsGoals() {
   currentEditType = 'savings';
   openEditModal('Spaardoelen', `
     <div class="savings-field">
-      <label>Spaarpercentage per maand (%)</label>
-      <input type="number" id="editSavRate" min="0" max="100" value="${data.savingsRateGoal||''}">
+      <label>Spaarbedrag per maand (€)</label>
+      <input type="number" id="editSavMonthly" min="0" value="${data.savingsGoal||''}">
+      <div class="hint">Dit verschijnt als "Sparen" in je budget overzicht. Het spaarpercentage wordt automatisch berekend.</div>
     </div>
     <div class="savings-field">
-      <label>Jaarlijks spaardoel (€)</label>
+      <label>Jaarlijks spaardoel (€) — optioneel</label>
       <input type="number" id="editSavYearly" min="0" value="${data.savingsYearlyGoal||''}">
     </div>`);
 }
@@ -1226,8 +1257,11 @@ function saveEditModal() {
       const cat = data.categories.find(c => c.name === inp.dataset.cat);
       if (cat) cat.budget = parseFloat(inp.value) || 0;
     });
+    // Save savings goal
+    const savGoalInput = document.getElementById('allBudgetsSavGoal');
+    if (savGoalInput) data.savingsGoal = parseFloat(savGoalInput.value) || 0;
   } else if (currentEditType === 'savings') {
-    data.savingsRateGoal = parseFloat(document.getElementById('editSavRate').value) || 0;
+    data.savingsGoal = parseFloat(document.getElementById('editSavMonthly').value) || 0;
     data.savingsYearlyGoal = parseFloat(document.getElementById('editSavYearly').value) || 0;
   } else if (currentEditType === 'categories') {
     // Remove unchecked existing categories
@@ -1281,6 +1315,12 @@ function resetAll() {
 // ============================================================
 //  INIT
 // ============================================================
+// Migrate old percentage-based savings goal to amount-based
+if (data && data.savingsRateGoal && !data.savingsGoal) {
+  data.savingsGoal = 0; // can't auto-convert percentage to amount, reset to 0
+  delete data.savingsRateGoal;
+  saveData(data);
+}
 if (data && data.categories && data.categories.length > 0) {
   showApp();
 } else {
