@@ -802,9 +802,44 @@ function renderBudgetPage() {
   const txs = txForMonth();
   const totalBudget = data.categories.reduce((s,c) => s + c.budget, 0);
   const totalSpent = totalExpenses(txs);
+  const inc = totalIncome(txs);
+  const totalIncomeBudget = (data.incomeBudgets || []).reduce((s,b) => s + b.amount, 0);
+  const hasBudgets = data.categories.some(c => c.budget > 0) || totalIncomeBudget > 0;
 
   let html = `<div class="card"><h2>Budget vs Realisatie</h2>
-    <p style="font-size:.85rem;color:var(--text-light);margin-bottom:.5rem">Totaal budget: ${eur(totalBudget)} — Besteed: ${eur(totalSpent)}</p></div>`;
+    <p style="font-size:.85rem;color:var(--text-light);margin-bottom:.75rem">Totaal inkomen: ${eur(inc)}${totalIncomeBudget > 0 ? ' van ' + eur(totalIncomeBudget) : ''} — Totaal uitgaven: ${eur(totalSpent)} van ${eur(totalBudget)}</p>
+    <button onclick="openInlineBudgetEdit()" style="display:inline-flex;align-items:center;gap:.4rem;padding:.5rem 1rem;background:var(--primary);color:#fff;border:none;border-radius:8px;font-size:.85rem;font-weight:600;cursor:pointer">✏️ Budgetten invullen / aanpassen</button>
+  </div>`;
+
+  // ---- INKOMEN SECTIE ----
+  html += `<div style="margin-bottom:.3rem;margin-top:.5rem;padding:0 .2rem"><h3 style="font-size:.95rem;color:var(--green);display:flex;align-items:center;gap:.4rem">💰 Inkomen</h3></div>`;
+
+  const incomeBudgets = data.incomeBudgets || [];
+  data.incomeSources.forEach(src => {
+    const received = txs.filter(t => t.type==='income' && t.category === src).reduce((s,t) => s+t.amount, 0);
+    const budgetObj = incomeBudgets.find(b => b.name === src);
+    const budget = budgetObj ? budgetObj.amount : 0;
+    const pctUsed = budget > 0 ? Math.min((received / budget) * 100, 150) : 0;
+    // For income: green = received enough, orange = getting there, muted = nothing yet
+    let barClass = 'green';
+    if (budget > 0) {
+      if (pctUsed < 50) barClass = 'orange';
+      else if (pctUsed < 90) barClass = 'green';
+    }
+
+    html += `
+    <div class="budget-cat">
+      <div class="budget-cat-header">
+        <span class="cat-title">${escHtml(src)}</span>
+        <span class="cat-amounts">${eur(received)}${budget > 0 ? ' / ' + eur(budget) : ''}</span>
+      </div>
+      ${budget > 0 ? `<div class="progress-bar"><div class="fill ${barClass}" style="width:${Math.min(pctUsed,100)}%"></div></div>` : ''}
+      <div class="remaining">${budget > 0 ? (received >= budget ? 'Ontvangen!' : eur(budget - received) + ' verwacht') : (received > 0 ? eur(received) + ' ontvangen' : 'Nog geen inkomen')}</div>
+    </div>`;
+  });
+
+  // ---- UITGAVEN SECTIE ----
+  html += `<div style="margin-bottom:.3rem;margin-top:1rem;padding:0 .2rem"><h3 style="font-size:.95rem;color:var(--red);display:flex;align-items:center;gap:.4rem">💸 Uitgaven</h3></div>`;
 
   data.categories.forEach(c => {
     const spent = txs.filter(t => t.type==='expense' && t.category === c.name).reduce((s,t) => s+t.amount, 0);
@@ -825,7 +860,6 @@ function renderBudgetPage() {
         const subSpent = txs.filter(t => t.type==='expense' && t.category === c.name && t.subcategory === s).reduce((sum,t)=>sum+t.amount,0);
         if (subSpent > 0) subHtml += `<div class="sub-row"><span class="sub-name">${escHtml(s)}</span><span class="sub-amount">${eur(subSpent)}</span></div>`;
       });
-      // uncategorized within this category
       const uncatSpent = txs.filter(t => t.type==='expense' && t.category === c.name && (!t.subcategory || !c.subs.includes(t.subcategory))).reduce((sum,t)=>sum+t.amount,0);
       if (uncatSpent > 0) subHtml += `<div class="sub-row"><span class="sub-name">Overig</span><span class="sub-amount">${eur(uncatSpent)}</span></div>`;
       subHtml += '</div>';
@@ -844,6 +878,24 @@ function renderBudgetPage() {
   });
 
   document.getElementById('budgetContent').innerHTML = html;
+}
+
+// Inline budget edit directly from Budget page
+function openInlineBudgetEdit() {
+  currentEditType = 'allBudgets';
+  const incomeBudgets = data.incomeBudgets || [];
+  let html = '<h3 style="font-size:.9rem;color:var(--green);margin-bottom:.5rem">💰 Verwacht inkomen per maand</h3><div class="budget-list" style="margin-bottom:1.2rem">';
+  data.incomeSources.forEach(src => {
+    const existing = incomeBudgets.find(b => b.name === src);
+    html += `<div class="budget-row"><span class="euro">€</span><span class="cat-label">${escHtml(src)}</span><input type="number" min="0" step="1" value="${existing ? existing.amount : ''}" placeholder="0" data-incsrc="${escHtml(src)}" class="inc-budget-input"></div>`;
+  });
+  html += '</div>';
+  html += '<h3 style="font-size:.9rem;color:var(--red);margin-bottom:.5rem">💸 Budget uitgaven per maand</h3><div class="budget-list">';
+  data.categories.forEach(c => {
+    html += `<div class="budget-row"><span class="euro">€</span><span class="cat-label">${escHtml(c.name)}</span><input type="number" min="0" step="1" value="${c.budget||''}" placeholder="0" data-cat="${escHtml(c.name)}"></div>`;
+  });
+  html += '</div>';
+  openEditModal('Alle budgetten invullen', html);
 }
 
 function toggleSubBreakdown(id) {
@@ -980,25 +1032,51 @@ function saveTransaction() {
 // ============================================================
 function renderSettings() {
   const el = document.getElementById('settingsContent');
+  const incomeBudgets = data.incomeBudgets || [];
+  const totalIncBudget = incomeBudgets.reduce((s,b) => s + b.amount, 0);
+  const totalExpBudget = data.categories.reduce((s,c) => s + c.budget, 0);
+  const incSummary = incomeBudgets.length > 0
+    ? incomeBudgets.map(b => b.name + ': ' + eur(b.amount)).join(', ')
+    : 'Nog niet ingesteld';
+  const expSummary = data.categories.filter(c => c.budget > 0).length > 0
+    ? data.categories.filter(c => c.budget > 0).map(c => c.name + ': ' + eur(c.budget)).join(', ')
+    : 'Nog niet ingesteld';
+
   el.innerHTML = `
     <div class="card">
       <h2>⚙️ Instellingen</h2>
-      <p style="color:var(--text-light);font-size:.85rem;margin-bottom:1rem">Pas je budget en voorkeuren aan</p>
+      <p style="color:var(--text-light);font-size:.85rem;margin-bottom:1rem">Hier pas je alles aan: budgetten, categorieën, spaardoelen en meer.</p>
     </div>
 
     <div class="settings-section">
-      <h3>📊 Budget & Categorieën</h3>
+      <h3>💰 Inkomen</h3>
       <button class="settings-btn" onclick="editIncomeSources()">
-        <div class="label">Inkomstenbronnen</div>
-        <div class="desc">${data.incomeSources.join(', ')}</div>
+        <div class="label">Inkomstenbronnen beheren</div>
+        <div class="desc">Bronnen toevoegen of verwijderen — Nu: ${data.incomeSources.join(', ')}</div>
       </button>
+      <button class="settings-btn" onclick="editIncomeBudgets()">
+        <div class="label">Verwacht inkomen per maand</div>
+        <div class="desc">${totalIncBudget > 0 ? 'Totaal: ' + eur(totalIncBudget) + ' — ' + incSummary : 'Nog niet ingevuld — klik hier om in te vullen'}</div>
+      </button>
+    </div>
+
+    <div class="settings-section">
+      <h3>💸 Uitgaven</h3>
       <button class="settings-btn" onclick="editCategories()">
-        <div class="label">Uitgavecategorieën</div>
-        <div class="desc">${data.categories.length} categorieën ingesteld</div>
+        <div class="label">Categorieën beheren</div>
+        <div class="desc">Categorieën toevoegen of verwijderen — Nu: ${data.categories.length} categorieën</div>
       </button>
       <button class="settings-btn" onclick="editBudgets()">
-        <div class="label">Budgetten aanpassen</div>
-        <div class="desc">Maandbudget per categorie wijzigen</div>
+        <div class="label">Budget per categorie</div>
+        <div class="desc">${totalExpBudget > 0 ? 'Totaal: ' + eur(totalExpBudget) + ' — ' + expSummary : 'Nog niet ingevuld — klik hier om in te vullen'}</div>
+      </button>
+    </div>
+
+    <div class="settings-section">
+      <h3>📊 Alles tegelijk aanpassen</h3>
+      <button class="settings-btn" onclick="openInlineBudgetEdit()" style="border-color:var(--primary-light);background:#f5f3ff">
+        <div class="label" style="color:var(--primary)">✏️ Alle budgetten invullen / wijzigen</div>
+        <div class="desc">Inkomen én uitgaven budgetten in één overzicht aanpassen</div>
       </button>
     </div>
 
@@ -1006,7 +1084,7 @@ function renderSettings() {
       <h3>🎯 Spaardoelen</h3>
       <button class="settings-btn" onclick="editSavingsGoals()">
         <div class="label">Spaardoel aanpassen</div>
-        <div class="desc">Huidig doel: ${data.savingsRateGoal ? pct(data.savingsRateGoal) : 'Niet ingesteld'}${data.savingsYearlyGoal ? ' — Jaarlijks: ' + eur(data.savingsYearlyGoal) : ''}</div>
+        <div class="desc">${data.savingsRateGoal ? 'Maandelijks: ' + pct(data.savingsRateGoal) + ' sparen' : 'Nog niet ingesteld — klik hier'}${data.savingsYearlyGoal ? ' — Jaarlijks doel: ' + eur(data.savingsYearlyGoal) : ''}</div>
       </button>
     </div>
 
@@ -1014,16 +1092,16 @@ function renderSettings() {
       <h3>📦 Gegevens</h3>
       <button class="settings-btn" onclick="exportData()">
         <div class="label">Gegevens exporteren</div>
-        <div class="desc">Download een back-up van je data</div>
+        <div class="desc">Download een back-up van al je data als bestand</div>
       </button>
       <button class="settings-btn" onclick="document.getElementById('importFile').click()">
         <div class="label">Gegevens importeren</div>
-        <div class="desc">Herstel een eerdere back-up</div>
+        <div class="desc">Herstel een eerdere back-up vanuit een bestand</div>
       </button>
       <input type="file" id="importFile" accept=".json" style="display:none" onchange="importData(this)">
       <button class="settings-btn danger-zone" onclick="resetAll()">
         <div class="label" style="color:var(--red)">Alle gegevens wissen</div>
-        <div class="desc">Begin helemaal opnieuw — dit kan niet ongedaan worden</div>
+        <div class="desc">Begin helemaal opnieuw — dit kan niet ongedaan worden!</div>
       </button>
     </div>`;
 }
@@ -1054,14 +1132,26 @@ function addEditIncome() {
   inp.value = '';
 }
 
-function editBudgets() {
-  currentEditType = 'budgets';
-  let html = '<div class="budget-list">';
-  data.categories.forEach(c => {
-    html += `<div class="budget-row"><span class="euro">€</span><span class="cat-label">${escHtml(c.name)}</span><input type="number" min="0" step="1" value="${c.budget||0}" data-cat="${escHtml(c.name)}"></div>`;
+function editIncomeBudgets() {
+  currentEditType = 'incomeBudgets';
+  const incomeBudgets = data.incomeBudgets || [];
+  let html = '<p style="font-size:.82rem;color:var(--text-light);margin-bottom:.75rem">Vul in hoeveel je per maand verwacht te ontvangen per bron.</p><div class="budget-list">';
+  data.incomeSources.forEach(src => {
+    const existing = incomeBudgets.find(b => b.name === src);
+    html += `<div class="budget-row"><span class="euro">€</span><span class="cat-label">${escHtml(src)}</span><input type="number" min="0" step="1" value="${existing ? existing.amount : ''}" placeholder="0" data-incsrc="${escHtml(src)}" class="inc-budget-input"></div>`;
   });
   html += '</div>';
-  openEditModal('Budgetten aanpassen', html);
+  openEditModal('Verwacht inkomen per maand', html);
+}
+
+function editBudgets() {
+  currentEditType = 'budgets';
+  let html = '<p style="font-size:.82rem;color:var(--text-light);margin-bottom:.75rem">Vul in hoeveel je per maand wilt besteden per categorie.</p><div class="budget-list">';
+  data.categories.forEach(c => {
+    html += `<div class="budget-row"><span class="euro">€</span><span class="cat-label">${escHtml(c.name)}</span><input type="number" min="0" step="1" value="${c.budget||''}" placeholder="0" data-cat="${escHtml(c.name)}"></div>`;
+  });
+  html += '</div>';
+  openEditModal('Budget per uitgavecategorie', html);
 }
 
 function editSavingsGoals() {
@@ -1111,8 +1201,28 @@ function saveEditModal() {
   if (currentEditType === 'income') {
     const chips = document.querySelectorAll('#editIncomeChips .chip.selected');
     data.incomeSources = Array.from(chips).map(c => c.dataset.val);
+  } else if (currentEditType === 'incomeBudgets') {
+    const incBudgets = [];
+    document.querySelectorAll('.inc-budget-input').forEach(inp => {
+      const amount = parseFloat(inp.value) || 0;
+      if (amount > 0) incBudgets.push({ name: inp.dataset.incsrc, amount });
+    });
+    data.incomeBudgets = incBudgets;
   } else if (currentEditType === 'budgets') {
     document.querySelectorAll('#editModalBody .budget-row input').forEach(inp => {
+      const cat = data.categories.find(c => c.name === inp.dataset.cat);
+      if (cat) cat.budget = parseFloat(inp.value) || 0;
+    });
+  } else if (currentEditType === 'allBudgets') {
+    // Save income budgets
+    const incBudgets = [];
+    document.querySelectorAll('.inc-budget-input').forEach(inp => {
+      const amount = parseFloat(inp.value) || 0;
+      if (amount > 0) incBudgets.push({ name: inp.dataset.incsrc, amount });
+    });
+    data.incomeBudgets = incBudgets;
+    // Save expense budgets
+    document.querySelectorAll('#editModalBody .budget-row input[data-cat]').forEach(inp => {
       const cat = data.categories.find(c => c.name === inp.dataset.cat);
       if (cat) cat.budget = parseFloat(inp.value) || 0;
     });
