@@ -763,7 +763,8 @@ function renderDashboard() {
 
     <div class="card">
       <h2>Gespaard per maand — ${viewDate.getFullYear()}</h2>
-      <div class="chart-container"><canvas id="chartSavings"></canvas></div>
+      <div class="chart-container" style="height:260px"><canvas id="chartSavings"></canvas></div>
+      <div id="chartSavingsLegend" style="text-align:center;font-size:.75rem;color:var(--text-light);margin-top:.5rem;display:flex;flex-wrap:wrap;justify-content:center;gap:.25rem .5rem"></div>
     </div>
 
     <div class="card">
@@ -777,59 +778,137 @@ function renderDashboard() {
   if (topCats.length > 0) renderExpensesChart(topCats);
 }
 
+function nlNum(v) {
+  return v.toLocaleString('nl-NL', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+}
+
 function renderSavingsChart() {
   const canvas = document.getElementById('chartSavings');
   if (!canvas) return;
   const year = viewDate.getFullYear();
-  const labels = [], dataPoints = [], colors = [], rates = [];
+  const labels = [], amounts = [], rates = [], barColors = [];
+  const sGoal = data.savingsGoal || 0;
+
   for (let m = 0; m < 12; m++) {
-    const d = new Date(year, m, 1);
     labels.push(MONTHS_NL[m].slice(0,3));
+    const d = new Date(year, m, 1);
     const txs = txForMonth(d);
     const hasTx = txs.length > 0;
     const inc = totalIncome(txs);
     const exp = totalExpenses(txs);
     const saved = hasTx ? inc - exp : null;
-    const r = hasTx && inc > 0 ? (saved / inc) * 100 : null;
-    dataPoints.push(saved);
+    const r = hasTx && inc > 0 ? Math.round((saved / inc) * 1000) / 10 : null;
+    amounts.push(saved);
     rates.push(r);
     if (!hasTx) {
-      colors.push('rgba(200,200,200,.25)');
+      barColors.push('rgba(200,200,200,.2)');
+    } else if (sGoal > 0) {
+      if (saved >= sGoal) barColors.push('rgba(22,163,74,.8)');
+      else if (saved >= sGoal * 0.7) barColors.push('rgba(234,88,12,.8)');
+      else barColors.push('rgba(220,38,38,.8)');
     } else {
-      const sGoal = data.savingsGoal || 0;
-      if (sGoal > 0) {
-        if (saved >= sGoal) colors.push('rgba(22,163,74,.7)');
-        else if (saved >= sGoal * 0.7) colors.push('rgba(234,88,12,.7)');
-        else colors.push('rgba(220,38,38,.7)');
-      } else {
-        colors.push(saved >= 0 ? 'rgba(22,163,74,.7)' : 'rgba(220,38,38,.7)');
-      }
+      barColors.push(saved >= 0 ? 'rgba(22,163,74,.8)' : 'rgba(220,38,38,.8)');
     }
   }
+
   if (dashCharts.savings) dashCharts.savings.destroy();
   dashCharts.savings = new Chart(canvas, {
-    type: 'bar',
-    data: { labels, datasets: [{ data: dataPoints, backgroundColor: colors, borderRadius: 6, maxBarThickness: 40 }] },
+    data: {
+      labels,
+      datasets: [
+        {
+          type: 'bar',
+          label: 'Gespaard (\u20AC)',
+          data: amounts,
+          backgroundColor: barColors,
+          borderRadius: 5,
+          maxBarThickness: 36,
+          yAxisID: 'yEur',
+          order: 2
+        },
+        {
+          type: 'line',
+          label: 'Spaarquote (%)',
+          data: rates,
+          borderColor: '#4f46e5',
+          backgroundColor: 'rgba(79,70,229,.1)',
+          borderWidth: 2.5,
+          pointBackgroundColor: '#4f46e5',
+          pointBorderColor: '#fff',
+          pointBorderWidth: 2,
+          pointRadius: rates.map(r => r !== null ? 5 : 0),
+          pointHoverRadius: 7,
+          tension: 0.3,
+          fill: false,
+          spanGaps: false,
+          yAxisID: 'yPct',
+          order: 1
+        }
+      ]
+    },
     options: {
-      responsive: true, maintainAspectRatio: false,
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
       plugins: {
         legend: { display: false },
         tooltip: {
-          filter: ctx => ctx.parsed.y !== null,
+          filter: ctx => {
+            if (ctx.dataset.type === 'bar') return ctx.parsed.y !== null;
+            return ctx.parsed.y !== null;
+          },
           callbacks: {
             label: ctx => {
-              const r = rates[ctx.dataIndex];
-              return eur(ctx.parsed.y) + (r !== null ? ' \u2014 ' + pct(r) : '');
+              if (ctx.dataset.type === 'bar' && ctx.parsed.y !== null) {
+                return ' Gespaard: \u20AC' + nlNum(ctx.parsed.y);
+              }
+              if (ctx.dataset.type === 'line' && ctx.parsed.y !== null) {
+                return ' Spaarquote: ' + ctx.parsed.y.toLocaleString('nl-NL', {minimumFractionDigits:1, maximumFractionDigits:1}) + '%';
+              }
+              return null;
             }
           }
         }
       },
       scales: {
-        y: { beginAtZero: true, ticks: { callback: v => '\u20AC' + v }, grid: { color: '#f0f2f5' } },
-        x: { grid: { display: false } }
+        yEur: {
+          type: 'linear',
+          position: 'left',
+          beginAtZero: true,
+          ticks: { callback: v => '\u20AC' + nlNum(v), font: { size: 11 } },
+          grid: { color: '#f0f2f5' },
+          title: { display: false }
+        },
+        yPct: {
+          type: 'linear',
+          position: 'right',
+          beginAtZero: true,
+          suggestedMax: 100,
+          ticks: { callback: v => v + '%', font: { size: 11 } },
+          grid: { drawOnChartArea: false }
+        },
+        x: { grid: { display: false }, ticks: { font: { size: 11 } } }
       }
     }
   });
+
+  // Custom legend below chart
+  const legendEl = document.getElementById('chartSavingsLegend');
+  if (legendEl) {
+    let items = '';
+    if (sGoal > 0) {
+      items = `
+        <span style="display:inline-flex;align-items:center;gap:4px;margin-right:12px"><span style="width:12px;height:12px;border-radius:3px;background:rgba(22,163,74,.8);display:inline-block"></span><span>Boven doel</span></span>
+        <span style="display:inline-flex;align-items:center;gap:4px;margin-right:12px"><span style="width:12px;height:12px;border-radius:3px;background:rgba(234,88,12,.8);display:inline-block"></span><span>Bijna op doel</span></span>
+        <span style="display:inline-flex;align-items:center;gap:4px;margin-right:12px"><span style="width:12px;height:12px;border-radius:3px;background:rgba(220,38,38,.8);display:inline-block"></span><span>Onder doel</span></span>`;
+    } else {
+      items = `
+        <span style="display:inline-flex;align-items:center;gap:4px;margin-right:12px"><span style="width:12px;height:12px;border-radius:3px;background:rgba(22,163,74,.8);display:inline-block"></span><span>Positief</span></span>
+        <span style="display:inline-flex;align-items:center;gap:4px;margin-right:12px"><span style="width:12px;height:12px;border-radius:3px;background:rgba(220,38,38,.8);display:inline-block"></span><span>Negatief</span></span>`;
+    }
+    items += `<span style="display:inline-flex;align-items:center;gap:4px"><span style="width:16px;height:3px;background:#4f46e5;border-radius:2px;display:inline-block"></span><span>Spaarquote %</span></span>`;
+    legendEl.innerHTML = items;
+  }
 }
 
 function renderExpensesChart(topCats) {
