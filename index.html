@@ -734,21 +734,16 @@ function renderDashboard() {
   const diffClass = diffSaved >= 0 ? 'val-green' : 'val-red';
   const diffSign = diffSaved >= 0 ? '+' : '';
 
+  // ---- Spaarquote budget vs werkelijk ----
+  const budgetQuote = budgetInc > 0 ? (budgetSaved / budgetInc) * 100 : 0;
+  const actualQuote = inc > 0 ? (saved / inc) * 100 : 0;
+  const diffQuote = actualQuote - budgetQuote;
+
   // ---- Table columns: only show Werkelijk + Verschil when there are transactions ----
   const showActual = hasTx;
   const colHeaders = showActual
     ? '<th></th><th>Budget</th><th>Werkelijk</th><th>Verschil</th>'
     : '<th></th><th>Budget</th>';
-
-  const incRow = showActual
-    ? `<td class="val-green">${eur(inc)}</td><td class="${inc - budgetInc >= 0 ? 'val-green' : 'val-red'}">${hasBudget ? (inc - budgetInc >= 0 ? '+' : '') + eur(inc - budgetInc) : '—'}</td>`
-    : '';
-  const expRow = showActual
-    ? `<td class="val-red">${eur(exp)}</td><td class="${exp - budgetExp <= 0 ? 'val-green' : 'val-red'}">${hasBudget ? (exp <= budgetExp ? '' : '+') + eur(exp - budgetExp) : '—'}</td>`
-    : '';
-  const totalRow = showActual
-    ? `<td class="val-blue">${eur(saved)}${inc > 0 ? ' <span class="formula">(' + pct(actualRate) + ')</span>' : ''}</td><td class="${diffClass}">${hasBudget ? diffSign + eur(diffSaved) : '—'}</td>`
-    : '';
 
   // ---- Verdict — only when there are actual transactions ----
   let verdictHtml = '';
@@ -757,29 +752,29 @@ function renderDashboard() {
     if (savingsGoal > 0) {
       if (saved >= savingsGoal) {
         verdictClass = 'on-track'; verdictText = 'Op schema!';
-        verdictSub = `Je spaart ${eur(saved)} — doel is ${eur(savingsGoal)}`;
+        verdictSub = `Je spaart ${eur(saved)} (${pct(actualQuote)}) — doel: ${eur(savingsGoal)}`;
       } else if (saved >= savingsGoal * 0.7) {
         verdictClass = 'close'; verdictText = 'Bijna op doel';
-        verdictSub = `Nog ${eur(savingsGoal - saved)} te gaan tot je doel van ${eur(savingsGoal)}`;
+        verdictSub = `Nog ${eur(savingsGoal - saved)} te gaan — nu ${pct(actualQuote)} spaarquote`;
       } else {
         verdictClass = 'off-track'; verdictText = 'Onder doel';
-        verdictSub = `Nog ${eur(savingsGoal - saved)} te gaan tot je doel van ${eur(savingsGoal)}`;
+        verdictSub = `Nog ${eur(savingsGoal - saved)} te gaan — nu ${pct(actualQuote)} spaarquote`;
       }
     } else if (hasBudget) {
-      if (saved >= budgetSaved) {
+      if (actualQuote >= budgetQuote) {
         verdictClass = 'on-track'; verdictText = 'Op schema!';
-        verdictSub = `Je spaart ${eur(Math.abs(diffSaved))} meer dan budget`;
-      } else if (saved >= budgetSaved * 0.7) {
+        verdictSub = `Spaarquote ${pct(actualQuote)} — budget was ${pct(budgetQuote)}`;
+      } else if (actualQuote >= budgetQuote * 0.7) {
         verdictClass = 'close'; verdictText = 'Bijna op schema';
-        verdictSub = `Je spaart ${eur(Math.abs(diffSaved))} minder dan budget`;
+        verdictSub = `Spaarquote ${pct(actualQuote)} — budget was ${pct(budgetQuote)}`;
       } else {
         verdictClass = 'off-track'; verdictText = 'Onder budget';
-        verdictSub = `Je spaart ${eur(Math.abs(diffSaved))} minder dan budget`;
+        verdictSub = `Spaarquote ${pct(actualQuote)} — budget was ${pct(budgetQuote)}`;
       }
     } else {
       verdictClass = saved >= 0 ? 'on-track' : 'off-track';
       verdictText = saved >= 0 ? 'Positief saldo' : 'Meer uitgegeven dan ontvangen';
-      verdictSub = `Saldo deze maand: ${eur(saved)}`;
+      verdictSub = `Gespaard: ${eur(saved)} (${pct(actualQuote)})`;
     }
     verdictHtml = `<div class="verdict-bar ${verdictClass}">${verdictText}<div class="verdict-sub">${verdictSub}</div></div>`;
   } else if (!hasBudget) {
@@ -795,17 +790,22 @@ function renderDashboard() {
           <tr>
             <td class="row-label">Inkomen</td>
             <td class="val-green">${budgetInc > 0 ? eur(budgetInc) : '—'}</td>
-            ${incRow}
+            ${showActual ? `<td class="val-green">${eur(inc)}</td><td class="${inc - budgetInc >= 0 ? 'val-green' : 'val-red'}">${hasBudget ? (inc - budgetInc >= 0 ? '+' : '') + eur(inc - budgetInc) : '—'}</td>` : ''}
           </tr>
           <tr>
             <td class="row-label">Uitgaven</td>
             <td class="val-red">${budgetExp > 0 ? eur(budgetExp) : '—'}</td>
-            ${expRow}
+            ${showActual ? `<td class="val-red">${eur(exp)}</td><td class="${exp - budgetExp <= 0 ? 'val-green' : 'val-red'}">${hasBudget ? (exp <= budgetExp ? '' : '+') + eur(exp - budgetExp) : '—'}</td>` : ''}
           </tr>
           <tr class="row-total">
-            <td><span class="formula">Inkomen − Uitgaven =</span></td>
-            <td class="val-blue">${hasBudget ? eur(budgetSaved) : '—'}${budgetInc > 0 ? ' <span class="formula">(' + pct(budgetRate) + ')</span>' : ''}</td>
-            ${totalRow}
+            <td>Gespaard</td>
+            <td class="val-blue">${hasBudget ? eur(budgetSaved) : '—'}</td>
+            ${showActual ? `<td class="val-blue">${eur(saved)}</td><td class="${saved - budgetSaved >= 0 ? 'val-green' : 'val-red'}">${hasBudget ? (saved - budgetSaved >= 0 ? '+' : '') + eur(saved - budgetSaved) : '—'}</td>` : ''}
+          </tr>
+          <tr class="row-total" style="border-top:none">
+            <td>Spaarquote</td>
+            <td class="val-blue">${hasBudget && budgetInc > 0 ? pct(budgetQuote) : '—'}</td>
+            ${showActual ? `<td class="val-blue">${inc > 0 ? pct(actualQuote) : '—'}</td><td class="${diffQuote >= 0 ? 'val-green' : 'val-red'}">${hasBudget && budgetInc > 0 && inc > 0 ? (diffQuote >= 0 ? '+' : '') + pct(diffQuote) : '—'}</td>` : ''}
           </tr>
         </tbody>
       </table>
