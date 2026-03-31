@@ -772,44 +772,80 @@ function renderDashboard() {
   txs.filter(t=>t.type==='expense').forEach(t => { expByCat[t.category] = (expByCat[t.category]||0) + t.amount; });
   const topCats = Object.entries(expByCat).sort((a,b)=>b[1]-a[1]).slice(0,6);
 
-  // ---- Spaarquote ----
+  // ---- Budget totals ----
+  const budgetInc = (data.incomeBudgets || []).reduce((s,b) => s + b.amount, 0);
+  const budgetExp = data.categories.reduce((s,c) => s + (c.budget || 0), 0);
+  const budgetSaved = budgetInc - budgetExp;
+  const budgetQuote = budgetInc > 0 ? (budgetSaved / budgetInc) * 100 : 0;
+
+  // ---- Actual ----
   const actualQuote = inc > 0 ? (saved / inc) * 100 : 0;
 
-  // ---- Status color ----
-  let quoteColor = 'var(--text-light)';
-  let statusText = '';
-  if (hasTx) {
-    if (savingsGoal > 0) {
-      if (saved >= savingsGoal) { quoteColor = 'var(--green)'; statusText = 'Op schema!'; }
-      else if (saved >= savingsGoal * 0.7) { quoteColor = 'var(--orange)'; statusText = 'Bijna op doel'; }
-      else { quoteColor = 'var(--red)'; statusText = 'Onder doel'; }
-    } else {
-      if (saved > 0) { quoteColor = 'var(--green)'; statusText = 'Positief'; }
-      else if (saved === 0) { quoteColor = 'var(--text-light)'; statusText = 'Quitte'; }
-      else { quoteColor = 'var(--red)'; statusText = 'Negatief'; }
-    }
+  // ---- Verschil: only when actual data exists ----
+  const dash = '<span style="color:#cbd5e1">—</span>';
+  const wInc = hasTx ? eur(inc) : dash;
+  const wExp = hasTx ? eur(exp) : dash;
+  const wSaved = hasTx ? eur(saved) : dash;
+  const wQuote = hasTx && inc > 0 ? pct(actualQuote) : (hasTx ? '0,0%' : dash);
+
+  function diffCell(actual, budget, invert) {
+    if (!hasTx) return dash;
+    const d = invert ? budget - actual : actual - budget;
+    const cls = d >= 0 ? 'val-green' : 'val-red';
+    const sign = d >= 0 ? '+' : '';
+    return `<span class="${cls}">${sign}${eur(d)}</span>`;
+  }
+  function diffPctCell(actualPct, budgetPct) {
+    if (!hasTx) return dash;
+    const d = actualPct - budgetPct;
+    const cls = d >= 0 ? 'val-green' : 'val-red';
+    const sign = d >= 0 ? '+' : '';
+    return `<span class="${cls}">${sign}${pct(d)}</span>`;
+  }
+
+  // ---- Verdict — only with actual data ----
+  let verdictHtml = '';
+  if (hasTx && savingsGoal > 0) {
+    let vc, vt, vs;
+    if (saved >= savingsGoal) { vc='on-track'; vt='Op schema!'; vs=`Je spaart ${eur(saved)} (${pct(actualQuote)}) — doel: ${eur(savingsGoal)}`; }
+    else if (saved >= savingsGoal*0.7) { vc='close'; vt='Bijna op doel'; vs=`Nog ${eur(savingsGoal-saved)} te gaan — nu ${pct(actualQuote)}`; }
+    else { vc='off-track'; vt='Onder doel'; vs=`Nog ${eur(savingsGoal-saved)} te gaan — nu ${pct(actualQuote)}`; }
+    verdictHtml = `<div class="verdict-bar ${vc}">${vt}<div class="verdict-sub">${vs}</div></div>`;
   }
 
   document.getElementById('dashContent').innerHTML = `
-    <div class="card" style="text-align:center;padding:1.5rem 1rem">
-      ${hasTx ? `
-        <div style="font-size:.75rem;text-transform:uppercase;letter-spacing:.05em;color:var(--text-light);margin-bottom:.6rem">Gespaard deze maand</div>
-        <div style="font-size:2.4rem;font-weight:800;color:${quoteColor};line-height:1">${eur(saved)}</div>
-        <div style="font-size:1.3rem;font-weight:700;color:${quoteColor};margin-top:.25rem">${pct(actualQuote)} spaarquote</div>
-        ${savingsGoal > 0 ? `<div style="margin-top:.5rem;font-size:.85rem;color:${quoteColor};font-weight:600">${statusText} — doel: ${eur(savingsGoal)}/maand</div>` : `<div style="margin-top:.4rem;font-size:.82rem;color:var(--text-light)">${statusText}</div>`}
-        <div style="display:flex;justify-content:center;gap:1.5rem;margin-top:1rem;padding-top:.85rem;border-top:1px solid var(--border)">
-          <div><div style="font-size:.7rem;text-transform:uppercase;color:var(--text-light)">Inkomen</div><div style="font-size:1.05rem;font-weight:700;color:var(--green)">${eur(inc)}</div></div>
-          <div style="align-self:center;color:var(--border);font-size:1.2rem">−</div>
-          <div><div style="font-size:.7rem;text-transform:uppercase;color:var(--text-light)">Uitgaven</div><div style="font-size:1.05rem;font-weight:700;color:var(--red)">${eur(exp)}</div></div>
-          <div style="align-self:center;color:var(--border);font-size:1.2rem">=</div>
-          <div><div style="font-size:.7rem;text-transform:uppercase;color:var(--text-light)">Gespaard</div><div style="font-size:1.05rem;font-weight:700;color:${quoteColor}">${eur(saved)}</div></div>
-        </div>
-      ` : `
-        <div style="font-size:.75rem;text-transform:uppercase;letter-spacing:.05em;color:var(--text-light);margin-bottom:.5rem">Gespaard deze maand</div>
-        <div style="font-size:1.5rem;color:var(--text-light);font-weight:600">—</div>
-        <div style="font-size:.85rem;color:var(--text-light);margin-top:.4rem">Nog geen transacties geregistreerd</div>
-        ${savingsGoal > 0 ? `<div style="font-size:.82rem;color:var(--text-light);margin-top:.3rem">Spaardoel: ${eur(savingsGoal)}/maand</div>` : ''}
-      `}
+    <div class="card">
+      <h2>Maandoverzicht</h2>
+      <table class="bsum">
+        <thead><tr><th></th><th>Budget</th><th>Werkelijk</th><th>Verschil</th></tr></thead>
+        <tbody>
+          <tr>
+            <td class="row-label">Totaal inkomen</td>
+            <td class="val-green">${budgetInc > 0 ? eur(budgetInc) : dash}</td>
+            <td>${wInc}</td>
+            <td>${budgetInc > 0 ? diffCell(inc, budgetInc, false) : dash}</td>
+          </tr>
+          <tr>
+            <td class="row-label">Totaal uitgaven</td>
+            <td class="val-red">${budgetExp > 0 ? eur(budgetExp) : dash}</td>
+            <td>${wExp}</td>
+            <td>${budgetExp > 0 ? diffCell(exp, budgetExp, true) : dash}</td>
+          </tr>
+          <tr class="row-total">
+            <td>Spaarbedrag</td>
+            <td class="val-blue">${budgetInc > 0 || budgetExp > 0 ? eur(budgetSaved) : dash}</td>
+            <td class="${hasTx ? (saved >= 0 ? 'val-green' : 'val-red') : ''}">${wSaved}</td>
+            <td>${budgetInc > 0 || budgetExp > 0 ? diffCell(saved, budgetSaved, false) : dash}</td>
+          </tr>
+          <tr class="row-total" style="border-top:none">
+            <td>Spaarquote</td>
+            <td class="val-blue">${budgetInc > 0 ? pct(budgetQuote) : dash}</td>
+            <td>${wQuote}</td>
+            <td>${budgetInc > 0 ? diffPctCell(hasTx ? actualQuote : 0, budgetQuote) : dash}</td>
+          </tr>
+        </tbody>
+      </table>
+      ${verdictHtml}
     </div>
 
     ${alerts ? `<div class="card"><h2>Waarschuwingen</h2>${alerts}</div>` : ''}
