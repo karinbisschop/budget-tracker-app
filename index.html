@@ -1653,10 +1653,16 @@ function closeEditModal() { document.getElementById('editModal').classList.remov
 
 function editIncomeSources() {
   currentEditType = 'income';
-  let html = '<div class="chip-grid" id="editIncomeChips">';
-  data.incomeSources.forEach(s => { html += `<div class="chip selected" onclick="this.classList.toggle('selected')" data-val="${escHtml(s)}">${escHtml(s)}</div>`; });
+  // Combine defaults + current sources, no duplicates
+  const allSources = [...new Set([...DEFAULT_INCOME_SOURCES, ...data.incomeSources])];
+  let html = '<p style="font-size:.82rem;color:var(--text-light);margin-bottom:.75rem">Tik op een bron om deze aan of uit te zetten.</p>';
+  html += '<div class="chip-grid" id="editIncomeChips">';
+  allSources.forEach(s => {
+    const isSelected = data.incomeSources.includes(s);
+    html += `<div class="chip ${isSelected?'selected':''}" onclick="this.classList.toggle('selected')" data-val="${escHtml(s)}">${escHtml(s)}</div>`;
+  });
   html += '</div>';
-  html += `<div class="add-custom"><input type="text" id="editNewIncome" placeholder="Nieuwe bron..." maxlength="50"><button onclick="addEditIncome()">Toevoegen</button></div>`;
+  html += `<div class="add-custom"><input type="text" id="editNewIncome" placeholder="Eigen bron toevoegen..." maxlength="50"><button onclick="addEditIncome()">Toevoegen</button></div>`;
   openEditModal('Inkomstenbronnen bewerken', html);
 }
 function addEditIncome() {
