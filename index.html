@@ -1712,12 +1712,46 @@ function editSavingsGoals() {
 
 function editCategories() {
   currentEditType = 'categories';
-  let html = '<p style="font-size:.82rem;color:var(--text-light);margin-bottom:.75rem">Vink uit om te verwijderen.</p>';
-  data.categories.forEach((c,i) => {
-    html += `<div style="margin-bottom:.5rem;padding:.5rem .6rem;border:1px solid var(--border);border-radius:8px"><label style="display:flex;align-items:center;gap:.5rem;font-weight:600;font-size:.9rem"><input type="checkbox" checked data-catidx="${i}" class="edit-cat-check" style="width:16px;height:16px;accent-color:var(--primary)">${escHtml(c.name)}</label></div>`;
+  let html = '<p style="font-size:.82rem;color:var(--text-light);margin-bottom:.75rem">Tik op een categorie om subcategorieën te zien. Vink uit om te verwijderen.</p>';
+  data.categories.forEach((c,ci) => {
+    const hasSubs = c.subs && c.subs.length > 0;
+    html += `<div style="margin-bottom:.5rem;padding:.5rem .6rem;border:1px solid var(--border);border-radius:8px">
+      <div style="display:flex;align-items:center;gap:.5rem;cursor:pointer" onclick="toggleEditCatSubs(${ci})">
+        <input type="checkbox" checked data-catidx="${ci}" class="edit-cat-check" style="width:16px;height:16px;accent-color:var(--primary)" onclick="event.stopPropagation()">
+        <span style="font-weight:600;font-size:.9rem;flex:1">${escHtml(c.name)}</span>
+        ${hasSubs ? '<span style="font-size:.7rem;color:var(--text-light)">'+c.subs.length+' sub</span><span class="edit-cat-arrow" id="editCatArrow'+ci+'" style="font-size:.7rem;transition:transform .2s">▶</span>' : ''}
+      </div>
+      <div id="editCatSubs${ci}" style="display:none;margin-top:.4rem;padding-left:1.5rem">
+        ${(c.subs||[]).map((s,si) => `<label style="display:flex;align-items:center;gap:.4rem;font-size:.85rem;margin:.2rem 0"><input type="checkbox" checked class="edit-sub-check" data-catidx="${ci}" data-subidx="${si}" style="width:14px;height:14px;accent-color:var(--primary)">${escHtml(s)}</label>`).join('')}
+        <div style="display:flex;gap:.4rem;margin-top:.4rem">
+          <input type="text" id="editNewSub${ci}" placeholder="Nieuwe subcategorie..." maxlength="50" style="flex:1;font-size:.82rem;padding:.3rem .5rem;border:1px solid var(--border);border-radius:6px">
+          <button onclick="addEditSub(${ci})" style="font-size:.78rem;padding:.3rem .6rem;background:var(--primary);color:#fff;border:none;border-radius:6px;cursor:pointer">+</button>
+        </div>
+      </div>
+    </div>`;
   });
   html += `<div class="add-custom" style="margin-top:.75rem"><input type="text" id="editNewCat" placeholder="Nieuwe categorie..." maxlength="50"><button onclick="addEditCat()">Toevoegen</button></div><div id="editNewCats"></div>`;
   openEditModal('Categorieën bewerken', html);
+}
+function toggleEditCatSubs(ci) {
+  const el = document.getElementById('editCatSubs'+ci);
+  const arrow = document.getElementById('editCatArrow'+ci);
+  if (!el) return;
+  const open = el.style.display !== 'none';
+  el.style.display = open ? 'none' : 'block';
+  if (arrow) arrow.style.transform = open ? '' : 'rotate(90deg)';
+}
+function addEditSub(ci) {
+  const inp = document.getElementById('editNewSub'+ci);
+  const v = inp.value.trim().slice(0,50);
+  if (!v) return;
+  const container = document.getElementById('editCatSubs'+ci);
+  const addDiv = container.querySelector('div:last-child');
+  const label = document.createElement('label');
+  label.style.cssText = 'display:flex;align-items:center;gap:.4rem;font-size:.85rem;margin:.2rem 0';
+  label.innerHTML = `<input type="checkbox" checked class="edit-new-sub" data-catidx="${ci}" data-subname="${escHtml(v)}" style="width:14px;height:14px;accent-color:var(--primary)">${escHtml(v)} <span style="font-size:.75rem;color:var(--green)">(nieuw)</span>`;
+  container.insertBefore(label, addDiv);
+  inp.value = '';
 }
 function addEditCat() {
   const inp = document.getElementById('editNewCat');
@@ -1760,10 +1794,24 @@ function saveEditModal() {
     data.savingsGoal = Math.max(0, parseFloat(document.getElementById('editSavMonthly').value)||0);
     data.savingsYearlyGoal = Math.max(0, parseFloat(document.getElementById('editSavYearly').value)||0);
   } else if (currentEditType === 'categories') {
-    const checks = document.querySelectorAll('.edit-cat-check');
+    // Update existing categories: remove unchecked cats and subs
+    const catChecks = document.querySelectorAll('.edit-cat-check');
     const keepIdx = new Set();
-    checks.forEach(ch => { if (ch.checked) keepIdx.add(parseInt(ch.dataset.catidx)); });
+    catChecks.forEach(ch => { if (ch.checked) keepIdx.add(parseInt(ch.dataset.catidx)); });
+    // Update subs for kept categories
+    data.categories.forEach((c, ci) => {
+      if (!keepIdx.has(ci)) return;
+      const subChecks = document.querySelectorAll(`.edit-sub-check[data-catidx="${ci}"]`);
+      const keepSubs = [];
+      subChecks.forEach(ch => { if (ch.checked) keepSubs.push(c.subs[parseInt(ch.dataset.subidx)]); });
+      // Add new subs
+      document.querySelectorAll(`.edit-new-sub[data-catidx="${ci}"]`).forEach(ch => {
+        if (ch.checked) keepSubs.push(ch.dataset.subname);
+      });
+      c.subs = keepSubs;
+    });
     data.categories = data.categories.filter((_,i)=>keepIdx.has(i));
+    // Add new categories
     document.querySelectorAll('.edit-new-cat').forEach(ch => {
       if (ch.checked) data.categories.push({ name: ch.dataset.name, subs:[], budget:0 });
     });
