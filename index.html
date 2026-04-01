@@ -586,6 +586,7 @@ let obSelectedIncome = new Set(['Salaris']);
 let obCategories = JSON.parse(JSON.stringify(DEFAULT_CATEGORIES));
 let obSelectedCats = {};
 let obBudgets = {};
+let obIncomeBudgets = {};
 let obSavingsMonthly = '';
 let obSavingsYearly = '';
 
@@ -610,7 +611,7 @@ function renderObStep() {
 function renderObIncome(el) {
   el.innerHTML = `
     <h2>Stap 1: Inkomstenbronnen</h2>
-    <p class="subtitle">Selecteer je inkomstenbronnen of voeg eigen toe</p>
+    <p class="subtitle">Kies welke inkomsten je hebt — bedragen vul je later in</p>
     <div class="chip-grid" id="incomeChips"></div>
     <div class="add-custom">
       <input type="text" id="customIncome" placeholder="Eigen bron toevoegen..." maxlength="50">
@@ -644,7 +645,7 @@ function addCustomIncome() {
 function renderObCategories(el) {
   el.innerHTML = `
     <h2>Stap 2: Uitgavecategorieën</h2>
-    <p class="subtitle">Selecteer de categorieën die op jou van toepassing zijn</p>
+    <p class="subtitle">Kies welke categorieën op jou van toepassing zijn — bedragen vul je in de volgende stap in</p>
     <div id="catTree"></div>
     <div class="add-custom">
       <input type="text" id="customCat" placeholder="Eigen categorie toevoegen..." maxlength="50">
@@ -726,18 +727,27 @@ function addCustomSub(i) {
 
 function renderObBudgets(el) {
   const selected = obCategories.filter(c => obSelectedCats[c.name]?.selected);
-  el.innerHTML = `
-    <h2>Stap 3: Budget per categorie</h2>
-    <p class="subtitle">Vul in hoeveel je per maand wilt besteden</p>
-    <div class="budget-list">
-      ${selected.map(c => `
-        <div class="budget-row">
-          <span class="euro">€</span>
-          <span class="cat-label">${escHtml(c.name)}</span>
-          <input type="number" placeholder="0" min="0" max="99999" step="1" value="${obBudgets[c.name]||''}" onchange="obBudgets['${esc(c.name)}']=Math.max(0,parseFloat(this.value)||0)" id="bud_${i(c.name)}">
-        </div>
-      `).join('')}
+  const incomeRows = [...obSelectedIncome].map(s => `
+    <div class="budget-row">
+      <span class="euro">€</span>
+      <span class="cat-label">${escHtml(s)}</span>
+      <input type="number" placeholder="0" min="0" max="99999" step="1" value="${obIncomeBudgets[s]||''}" onchange="obIncomeBudgets['${esc(s)}']=Math.max(0,parseFloat(this.value)||0)" id="ibud_${i(s)}">
     </div>
+  `).join('');
+  const expenseRows = selected.map(c => `
+    <div class="budget-row">
+      <span class="euro">€</span>
+      <span class="cat-label">${escHtml(c.name)}</span>
+      <input type="number" placeholder="0" min="0" max="99999" step="1" value="${obBudgets[c.name]||''}" onchange="obBudgets['${esc(c.name)}']=Math.max(0,parseFloat(this.value)||0)" id="bud_${i(c.name)}">
+    </div>
+  `).join('');
+  el.innerHTML = `
+    <h2>Stap 3: Budget instellen</h2>
+    <p class="subtitle">Vul per categorie het maandelijkse bedrag in</p>
+    <h3 style="margin:1rem 0 .5rem;font-size:1rem;opacity:.85">💰 Inkomsten</h3>
+    <div class="budget-list">${incomeRows}</div>
+    <h3 style="margin:1.2rem 0 .5rem;font-size:1rem;opacity:.85">💸 Uitgaven</h3>
+    <div class="budget-list">${expenseRows}</div>
     <div class="ob-actions">
       <button class="ob-btn secondary" onclick="obPrev()">← Terug</button>
       <button class="ob-btn primary" onclick="obNext()">Volgende →</button>
@@ -766,6 +776,11 @@ function renderObSavings(el) {
 
 function obNext() {
   if (obStep === 3) {
+    // save current budget inputs (income + expenses)
+    [...obSelectedIncome].forEach(s => {
+      const inp = document.getElementById('ibud_'+i(s));
+      if (inp) obIncomeBudgets[s] = Math.max(0, parseFloat(inp.value) || 0);
+    });
     const selected = obCategories.filter(c => obSelectedCats[c.name]?.selected);
     selected.forEach(c => {
       const inp = document.getElementById('bud_'+i(c.name));
@@ -789,8 +804,15 @@ function finishOnboarding() {
       subs: c.subs.filter(s => obSelectedCats[c.name].subs.has(s)),
       budget: obBudgets[c.name] || 0
     }));
+
+  const incomeBudgets = [...obSelectedIncome].map(s => ({
+    name: s,
+    amount: obIncomeBudgets[s] || 0
+  }));
+
   data = {
     incomeSources: [...obSelectedIncome],
+    incomeBudgets,
     categories,
     savingsGoal: parseFloat(obSavingsMonthly) || 0,
     savingsYearlyGoal: parseFloat(obSavingsYearly) || 0,
