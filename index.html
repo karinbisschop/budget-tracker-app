@@ -1572,11 +1572,11 @@ function renderSettings() {
     <div class="settings-section">
       <h3>📂 Categorieën</h3>
       <button class="settings-btn" onclick="editIncomeSources()">
-        <div class="label">Inkomstenbronnen beheren</div>
+        <div class="label">Inkomsten categorieën beheren</div>
         <div class="desc">Nu: ${data.incomeSources.join(', ')}</div>
       </button>
       <button class="settings-btn" onclick="editCategories()">
-        <div class="label">Uitgavecategorieën beheren</div>
+        <div class="label">Uitgave categorieën beheren</div>
         <div class="desc">${data.categories.length} categorieën</div>
       </button>
     </div>
@@ -1643,7 +1643,7 @@ function editIncomeSources() {
   });
   html += '</div>';
   html += `<div class="add-custom"><input type="text" id="editNewIncome" placeholder="Eigen bron toevoegen..." maxlength="50"><button onclick="addEditIncome()">Toevoegen</button></div>`;
-  openEditModal('Inkomstenbronnen bewerken', html);
+  openEditModal('Inkomsten categorieën bewerken', html);
 }
 function addEditIncome() {
   const inp = document.getElementById('editNewIncome');
@@ -1711,7 +1711,7 @@ function editCategories() {
     </div>`;
   });
   html += `<div class="add-custom" style="margin-top:.75rem"><input type="text" id="editNewCat" placeholder="Nieuwe categorie..." maxlength="50"><button onclick="addEditCat()">Toevoegen</button></div><div id="editNewCats"></div>`;
-  openEditModal('Categorieën bewerken', html);
+  openEditModal('Uitgave categorieën bewerken', html);
 }
 function toggleEditCatSubs(ci) {
   const el = document.getElementById('editCatSubs'+ci);
