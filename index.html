@@ -1570,14 +1570,6 @@ function renderSettings() {
     <div class="card"><h2>⚙️ Instellingen</h2></div>
 
     <div class="settings-section">
-      <h3>🎨 Weergave</h3>
-      <button class="settings-btn" onclick="toggleTheme();renderSettings()">
-        <div class="label">Thema: ${themeLabel}</div>
-        <div class="desc">Klik om te wisselen: Automatisch → Donker → Licht</div>
-      </button>
-    </div>
-
-    <div class="settings-section">
       <h3>💰 Inkomen</h3>
       <button class="settings-btn" onclick="editIncomeSources()">
         <div class="label">Inkomstenbronnen beheren</div>
@@ -1614,6 +1606,14 @@ function renderSettings() {
       <button class="settings-btn" onclick="editSavingsGoals()">
         <div class="label">Spaardoel aanpassen</div>
         <div class="desc">${data.savingsGoal?'Maandelijks: '+eur(data.savingsGoal):' Nog niet ingesteld'}${data.savingsYearlyGoal?' — Jaarlijks: '+eur(data.savingsYearlyGoal):''}</div>
+      </button>
+    </div>
+
+    <div class="settings-section">
+      <h3>🎨 Weergave</h3>
+      <button class="settings-btn" onclick="toggleTheme();renderSettings()">
+        <div class="label">Thema: ${themeLabel}</div>
+        <div class="desc">Klik om te wisselen: Automatisch → Donker → Licht</div>
       </button>
     </div>
 
