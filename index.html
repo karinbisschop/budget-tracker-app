@@ -1832,6 +1832,11 @@ if (data && data.savingsRateGoal && !data.savingsGoal) {
   delete data.savingsRateGoal;
   saveData(data);
 }
+// Migration: ensure incomeBudgets exists for existing users
+if (data && data.incomeSources && !data.incomeBudgets) {
+  data.incomeBudgets = data.incomeSources.map(s => ({ name: s, amount: 0 }));
+  saveData(data);
+}
 if (data && data.categories && data.categories.length > 0) {
   showApp();
 } else {
