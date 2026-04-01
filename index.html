@@ -1570,42 +1570,22 @@ function renderSettings() {
     <div class="card"><h2>⚙️ Instellingen</h2></div>
 
     <div class="settings-section">
-      <h3>💰 Inkomen</h3>
+      <h3>📂 Categorieën</h3>
       <button class="settings-btn" onclick="editIncomeSources()">
         <div class="label">Inkomstenbronnen beheren</div>
         <div class="desc">Nu: ${data.incomeSources.join(', ')}</div>
       </button>
-      <button class="settings-btn" onclick="editIncomeBudgets()">
-        <div class="label">Verwacht inkomen per maand</div>
-        <div class="desc">${totalIncBudget>0?'Totaal: '+eur(totalIncBudget):'Nog niet ingevuld'}</div>
-      </button>
-    </div>
-
-    <div class="settings-section">
-      <h3>💸 Uitgaven</h3>
       <button class="settings-btn" onclick="editCategories()">
-        <div class="label">Categorieën beheren</div>
+        <div class="label">Uitgavecategorieën beheren</div>
         <div class="desc">${data.categories.length} categorieën</div>
       </button>
-      <button class="settings-btn" onclick="editBudgets()">
-        <div class="label">Budget per categorie</div>
-        <div class="desc">${totalExpBudget>0?'Totaal: '+eur(totalExpBudget):'Nog niet ingevuld'}</div>
-      </button>
     </div>
 
     <div class="settings-section">
-      <h3>📊 Alles tegelijk</h3>
+      <h3>💶 Budget instellen</h3>
       <button class="settings-btn" onclick="openInlineBudgetEdit()" style="border-color:var(--primary-light)">
-        <div class="label" style="color:var(--primary)">✏️ Alle budgetten invullen / wijzigen</div>
-        <div class="desc">Inkomen én uitgaven in één overzicht</div>
-      </button>
-    </div>
-
-    <div class="settings-section">
-      <h3>🎯 Spaardoelen</h3>
-      <button class="settings-btn" onclick="editSavingsGoals()">
-        <div class="label">Spaardoel aanpassen</div>
-        <div class="desc">${data.savingsGoal?'Maandelijks: '+eur(data.savingsGoal):' Nog niet ingesteld'}${data.savingsYearlyGoal?' — Jaarlijks: '+eur(data.savingsYearlyGoal):''}</div>
+        <div class="label" style="color:var(--primary)">✏️ Budget per categorie invullen</div>
+        <div class="desc">Inkomen, uitgaven én spaardoel in één overzicht</div>
       </button>
     </div>
 
