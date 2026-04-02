@@ -1037,6 +1037,12 @@ function renderDashboard() {
             <td>${budgetExp > 0 ? diffCell(exp, budgetExp, true) : dash}</td>
           </tr>
           <tr class="row-total">
+            <td>Spaarbedrag</td>
+            <td class="val-blue">${budgetInc > 0 || budgetExp > 0 ? eur(budgetSaved) : dash}</td>
+            <td class="${hasTx ? (saved >= 0 ? 'val-green' : 'val-red') : ''}">${wSaved}</td>
+            <td>${budgetInc > 0 || budgetExp > 0 ? diffCell(saved, budgetSaved, false) : dash}</td>
+          </tr>
+          <tr class="row-total" style="border-top:none">
             <td>Spaarquote</td>
             <td class="val-blue">${budgetInc > 0 ? pct(budgetQuote) : dash}</td>
             <td>${wQuote}</td>
