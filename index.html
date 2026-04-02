@@ -1001,11 +1001,11 @@ function renderDashboard() {
   }
 
   let verdictHtml = '';
-  if (hasTx && savingsGoal > 0) {
+  if (hasTx && budgetInc > 0) {
     let vc, vt, vs;
-    if (saved >= savingsGoal) { vc='on-track'; vt='Op schema!'; vs=`Je spaart ${eur(saved)} — doel: ${eur(savingsGoal)}`; }
-    else if (saved >= savingsGoal*0.7) { vc='close'; vt='Bijna op doel'; vs=`Nog ${eur(savingsGoal-saved)} te gaan`; }
-    else { vc='off-track'; vt='Onder doel'; vs=`Nog ${eur(savingsGoal-saved)} te gaan`; }
+    if (actualQuote >= budgetQuote) { vc='on-track'; vt='Op schema!'; vs=`Spaarquote ${pct(actualQuote)} — doel: ${pct(budgetQuote)}`; }
+    else if (actualQuote >= budgetQuote*0.7) { vc='close'; vt='Bijna op doel'; vs=`Spaarquote ${pct(actualQuote)} — doel: ${pct(budgetQuote)}`; }
+    else { vc='off-track'; vt='Onder doel'; vs=`Spaarquote ${pct(actualQuote)} — doel: ${pct(budgetQuote)}`; }
     verdictHtml = `<div class="verdict-bar ${vc}">${vt}<div class="verdict-sub">${vs}</div></div>`;
   }
 
@@ -1037,12 +1037,6 @@ function renderDashboard() {
             <td>${budgetExp > 0 ? diffCell(exp, budgetExp, true) : dash}</td>
           </tr>
           <tr class="row-total">
-            <td>Spaarbedrag</td>
-            <td class="val-blue">${budgetInc > 0 || budgetExp > 0 ? eur(budgetSaved) : dash}</td>
-            <td class="${hasTx ? (saved >= 0 ? 'val-green' : 'val-red') : ''}">${wSaved}</td>
-            <td>${budgetInc > 0 || budgetExp > 0 ? diffCell(saved, budgetSaved, false) : dash}</td>
-          </tr>
-          <tr class="row-total" style="border-top:none">
             <td>Spaarquote</td>
             <td class="val-blue">${budgetInc > 0 ? pct(budgetQuote) : dash}</td>
             <td>${wQuote}</td>
