@@ -1558,7 +1558,7 @@ function renderSettings() {
         <div class="desc">Nu: ${data.incomeSources.join(', ')}</div>
       </button>
       <button class="settings-btn" onclick="editCategories()">
-        <div class="label">Uitgave categorieën beheren</div>
+        <div class="label">Uitgavecategorieën beheren</div>
         <div class="desc">${data.categories.length} categorieën</div>
       </button>
     </div>
@@ -1693,7 +1693,7 @@ function editCategories() {
     </div>`;
   });
   html += `<div class="add-custom" style="margin-top:.75rem"><input type="text" id="editNewCat" placeholder="Nieuwe categorie..." maxlength="50"><button onclick="addEditCat()">Toevoegen</button></div><div id="editNewCats"></div>`;
-  openEditModal('Uitgave categorieën bewerken', html);
+  openEditModal('Uitgavecategorieën bewerken', html);
 }
 function toggleEditCatSubs(ci) {
   const el = document.getElementById('editCatSubs'+ci);
