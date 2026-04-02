@@ -877,9 +877,8 @@ function closeFabMenu() {
 
 function refreshAll() {
   const ml = monthLabel(viewDate);
-  const mtBadge = hasMonthlyTotal() ? ' <span class="badge-mt">MT</span>' : '';
-  document.getElementById('headerMonth').innerHTML = ml + mtBadge;
-  ['dashMonth','budMonth','txMonth'].forEach(id => document.getElementById(id).innerHTML = ml + mtBadge);
+  document.getElementById('headerMonth').innerHTML = ml;
+  ['dashMonth','budMonth','txMonth'].forEach(id => document.getElementById(id).innerHTML = ml);
   renderDashboard();
   renderBudgetPage();
   renderTransactions();
@@ -959,8 +958,10 @@ function renderDashboard() {
   const saved = inc - exp;
   const savingsGoal = data.savingsGoal || 0;
 
+  // Waarschuwingen alleen voor de lopende maand
   let alerts = '';
-  if (hasTx) {
+  const isCurrentMonth = viewDate.getFullYear() === new Date().getFullYear() && viewDate.getMonth() === new Date().getMonth();
+  if (hasTx && isCurrentMonth) {
     data.categories.forEach(c => {
       if (c.budget <= 0) return;
       const spent = txs.filter(t => t.type==='expense' && t.category === c.name).reduce((s,t)=>s+t.amount, 0);
