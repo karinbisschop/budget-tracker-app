@@ -342,10 +342,10 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--primary-
 
   <!-- Dashboard -->
   <div class="page active" id="pageDashboard">
-    <div class="month-nav">
-      <button id="dashPrev" aria-label="Vorige maand">&#8249;</button>
-      <span id="dashMonth"></span>
-      <button id="dashNext" aria-label="Volgende maand">&#8250;</button>
+    <div class="ov-year-toggle">
+      <button id="dashPrevY" aria-label="Vorig jaar">&#8249;</button>
+      <span id="dashYear"></span>
+      <button id="dashNextY" aria-label="Volgend jaar">&#8250;</button>
     </div>
     <div id="dashContent"></div>
   </div>
@@ -531,6 +531,7 @@ let undoTimer = null;
 let txSearchQuery = '';
 let txFilterCat = '';
 let overviewYear = new Date().getFullYear();
+let dashYear = new Date().getFullYear();
 
 // ============================================================
 //  DONKERE MODUS
@@ -879,12 +880,14 @@ function setupNav() {
       refreshAll();
     });
   });
-  ['dashPrev','budPrev','txPrev'].forEach(id => {
+  ['budPrev','txPrev'].forEach(id => {
     document.getElementById(id).addEventListener('click', () => { viewDate.setMonth(viewDate.getMonth()-1); refreshAll(); });
   });
-  ['dashNext','budNext','txNext'].forEach(id => {
+  ['budNext','txNext'].forEach(id => {
     document.getElementById(id).addEventListener('click', () => { viewDate.setMonth(viewDate.getMonth()+1); refreshAll(); });
   });
+  document.getElementById('dashPrevY').addEventListener('click', () => { dashYear--; renderDashboard(); });
+  document.getElementById('dashNextY').addEventListener('click', () => { dashYear++; renderDashboard(); });
   document.getElementById('ovPrev').addEventListener('click', () => { overviewYear--; renderOverview(); });
   document.getElementById('ovNext').addEventListener('click', () => { overviewYear++; renderOverview(); });
   // FAB direct open
@@ -920,7 +923,7 @@ function setEntryMode(mode) {
 function refreshAll() {
   const ml = monthLabel(viewDate);
   document.getElementById('headerMonth').innerHTML = ml;
-  ['dashMonth','budMonth','txMonth'].forEach(id => document.getElementById(id).innerHTML = ml);
+  ['budMonth','txMonth'].forEach(id => document.getElementById(id).innerHTML = ml);
   renderDashboard();
   renderBudgetPage();
   renderTransactions();
@@ -994,129 +997,138 @@ function executeDelete() {
 let dashCharts = {};
 
 function renderDashboard() {
-  const txs = txForMonth();
-  const hasTx = txs.length > 0;
-  const inc = totalIncome(txs);
-  const exp = totalExpenses(txs);
-  const saved = inc - exp;
-  const savingsGoal = data.savingsGoal || 0;
+  document.getElementById('dashYear').textContent = dashYear;
+  const shortMonths = MONTHS_NL.map(m => m.slice(0,3));
 
-  // Waarschuwingen alleen voor de lopende maand
-  let alerts = '';
-  const isCurrentMonth = viewDate.getFullYear() === new Date().getFullYear() && viewDate.getMonth() === new Date().getMonth();
-  if (hasTx && isCurrentMonth) {
-    data.categories.forEach(c => {
-      if (c.budget <= 0) return;
-      const spent = txs.filter(t => t.type==='expense' && t.category === c.name).reduce((s,t)=>s+t.amount, 0);
-      if (spent <= 0) return;
-      const pctUsed = (spent / c.budget) * 100;
-      if (pctUsed >= 100) alerts += `<div class="alert danger"><span class="alert-icon">⚠️</span>${escHtml(c.name)}: ${eur(spent)} van ${eur(c.budget)} — <b>over budget!</b></div>`;
-      else if (pctUsed >= 85) alerts += `<div class="alert warn"><span class="alert-icon">⚡</span>${escHtml(c.name)}: ${eur(spent)} van ${eur(c.budget)} — <b>bijna op</b></div>`;
-    });
+  // Gather data per month for the year
+  const monthData = [];
+  for (let m = 0; m < 12; m++) {
+    const d = new Date(dashYear, m, 1);
+    const txs = txForMonth(d);
+    const inc = totalIncome(txs);
+    const exp = totalExpenses(txs);
+    monthData.push({ inc, exp, saldo: inc - exp, hasTx: txs.length > 0 });
   }
 
-  const expByCat = {};
-  txs.filter(t=>t.type==='expense').forEach(t => { expByCat[t.category] = (expByCat[t.category]||0) + t.amount; });
-  const topCats = Object.entries(expByCat).sort((a,b)=>b[1]-a[1]).slice(0,6);
+  // Year totals
+  const yearInc = monthData.reduce((s, d) => s + d.inc, 0);
+  const yearExp = monthData.reduce((s, d) => s + d.exp, 0);
+  const yearSaldo = yearInc - yearExp;
+  const yearQuote = yearInc > 0 ? (yearSaldo / yearInc * 100) : null;
 
+  // Budget info
   const budgetInc = (data.incomeBudgets || []).reduce((s,b) => s + b.amount, 0);
   const budgetExp = data.categories.reduce((s,c) => s + (c.budget || 0), 0);
-  const budgetSaved = budgetInc - budgetExp;
-  const budgetQuote = budgetInc > 0 ? (budgetSaved / budgetInc) * 100 : 0;
-  const actualQuote = inc > 0 ? (saved / inc) * 100 : 0;
-
-  const dash = '<span style="color:var(--text-light)">—</span>';
-  const wInc = hasTx ? eur(inc) : dash;
-  const wExp = hasTx ? eur(exp) : dash;
-  const wSaved = hasTx ? eur(saved) : dash;
-  const wQuote = hasTx && inc > 0 ? pct(actualQuote) : (hasTx ? '0,0%' : dash);
-
-  function diffCell(actual, budget, invert) {
-    if (!hasTx) return dash;
-    const d = invert ? budget - actual : actual - budget;
-    const cls = d >= 0 ? 'val-green' : 'val-red';
-    return `<span class="${cls}">${d >= 0 ? '+' : ''}${eur(d)}</span>`;
-  }
-  function diffPctCell(actualPct, budgetPct) {
-    if (!hasTx) return dash;
-    const d = actualPct - budgetPct;
-    const cls = d >= 0 ? 'val-green' : 'val-red';
-    return `<span class="${cls}">${d >= 0 ? '+' : ''}${pct(d)}</span>`;
-  }
-
-  let verdictHtml = '';
-  if (hasTx && budgetInc > 0) {
-    let vc, vt, vs;
-    if (actualQuote >= budgetQuote) { vc='on-track'; vt='Op schema!'; vs=`Spaarquote ${pct(actualQuote)} — doel: ${pct(budgetQuote)}`; }
-    else if (actualQuote >= budgetQuote*0.7) { vc='close'; vt='Bijna op doel'; vs=`Spaarquote ${pct(actualQuote)} — doel: ${pct(budgetQuote)}`; }
-    else { vc='off-track'; vt='Onder doel'; vs=`Spaarquote ${pct(actualQuote)} — doel: ${pct(budgetQuote)}`; }
-    verdictHtml = `<div class="verdict-bar ${vc}">${vt}<div class="verdict-sub">${vs}</div></div>`;
-  }
-
-  // Lege staat als geen budgetten ingesteld
+  const budgetQuote = budgetInc > 0 ? ((budgetInc - budgetExp) / budgetInc * 100) : 0;
   const noBudget = budgetInc === 0 && budgetExp === 0;
 
-  document.getElementById('dashContent').innerHTML = `
-    ${noBudget ? `<div class="card"><div class="empty-state">
+  function fmtCell(v, hasTx) {
+    if (!hasTx && v === 0) return '<span style="color:var(--text-light)">—</span>';
+    if (v === 0) return '<span style="color:var(--text-light)">—</span>';
+    return nlNum(Math.round(v));
+  }
+  function fmtTotal(v) {
+    return v === 0 ? '<span style="color:var(--text-light)">—</span>' : nlNum(Math.round(v));
+  }
+
+  let html = '';
+
+  if (noBudget) {
+    html += `<div class="card"><div class="empty-state">
       <div class="empty-icon">📊</div>
       <h3>Stel je budget in</h3>
       <p>Je hebt nog geen inkomen- of uitgavenbudget ingesteld. Doe dit eerst om je maandoverzicht te zien.</p>
       <button class="empty-cta" onclick="switchPage('pageSettings')">⚙️ Naar instellingen</button>
-    </div></div>` : `
-    <div class="card">
-      <h2>Maandoverzicht</h2>
-      <table class="bsum">
-        <thead><tr><th></th><th>Budget</th><th>Werkelijk</th><th>Verschil</th></tr></thead>
-        <tbody>
-          <tr>
-            <td class="row-label">Totaal inkomen</td>
-            <td class="val-green">${budgetInc > 0 ? eur(budgetInc) : dash}</td>
-            <td>${wInc}</td>
-            <td>${budgetInc > 0 ? diffCell(inc, budgetInc, false) : dash}</td>
-          </tr>
-          <tr>
-            <td class="row-label">Totaal uitgaven</td>
-            <td class="val-red">${budgetExp > 0 ? eur(budgetExp) : dash}</td>
-            <td>${wExp}</td>
-            <td>${budgetExp > 0 ? diffCell(exp, budgetExp, true) : dash}</td>
-          </tr>
-          <tr class="row-total">
-            <td>Spaarbedrag</td>
-            <td class="val-blue">${budgetInc > 0 || budgetExp > 0 ? eur(budgetSaved) : dash}</td>
-            <td class="${hasTx ? (saved >= 0 ? 'val-green' : 'val-red') : ''}">${wSaved}</td>
-            <td>${budgetInc > 0 || budgetExp > 0 ? diffCell(saved, budgetSaved, false) : dash}</td>
-          </tr>
-          <tr class="row-total" style="border-top:none">
-            <td>Spaarquote</td>
-            <td class="val-blue">${budgetInc > 0 ? pct(budgetQuote) : dash}</td>
-            <td>${wQuote}</td>
-            <td>${budgetInc > 0 ? diffPctCell(hasTx ? actualQuote : 0, budgetQuote) : dash}</td>
-          </tr>
-        </tbody>
-      </table>
-      ${verdictHtml}
-    </div>`}
+    </div></div>`;
+  } else {
+    // Compact month summary table
+    html += `<div class="card"><h2>Jaaroverzicht ${dashYear}</h2>
+      <div class="overview-wrap"><table class="overview-table"><thead><tr><th></th>`;
+    shortMonths.forEach(m => { html += `<th>${m}</th>`; });
+    html += '<th style="background:var(--bg);font-weight:700">Totaal</th></tr></thead><tbody>';
 
-    ${alerts ? `<div class="card"><h2>⚠️ Waarschuwingen</h2>${alerts}</div>` : ''}
+    // Income row
+    html += `<tr class="ov-total"><td class="ov-green">Inkomen</td>`;
+    monthData.forEach(d => { html += `<td class="ov-green">${fmtCell(d.inc, d.hasTx)}</td>`; });
+    html += `<td class="ov-green" style="background:var(--bg)">${fmtTotal(yearInc)}</td></tr>`;
 
-    <div class="card">
-      <h2>Spaarquote per maand — ${viewDate.getFullYear()}</h2>
-      <div class="chart-container" style="height:260px"><canvas id="chartSavings"></canvas></div>
-      <div id="chartSavingsLegend" style="text-align:center;font-size:.75rem;color:var(--text-light);margin-top:.5rem;display:flex;flex-wrap:wrap;justify-content:center;gap:.25rem .5rem"></div>
-    </div>
+    // Expenses row
+    html += `<tr class="ov-total"><td class="ov-red">Uitgaven</td>`;
+    monthData.forEach(d => { html += `<td class="ov-red">${fmtCell(d.exp, d.hasTx)}</td>`; });
+    html += `<td class="ov-red" style="background:var(--bg)">${fmtTotal(yearExp)}</td></tr>`;
 
-    <div class="card">
-      <h2>Grootste uitgaven deze maand</h2>
-      ${topCats.length > 0 ? `<div class="chart-container"><canvas id="chartExpenses"></canvas></div>` :
-        `<div class="empty-state" style="padding:1.5rem">
-          <div class="empty-icon">💸</div>
-          <p>Nog geen uitgaven geregistreerd</p>
-          <button class="empty-cta" onclick="openModal()">+ Transactie toevoegen</button>
-        </div>`}
-    </div>`;
+    // Saldo row
+    html += `<tr class="ov-saldo"><td class="ov-blue">Saldo</td>`;
+    monthData.forEach(d => {
+      const cls = d.hasTx ? (d.saldo >= 0 ? 'ov-green' : 'ov-red') : '';
+      html += `<td class="${cls}">${fmtCell(d.saldo, d.hasTx)}</td>`;
+    });
+    const yrCls = yearSaldo >= 0 ? 'ov-green' : 'ov-red';
+    html += `<td class="${yrCls}" style="background:var(--bg)">${fmtTotal(yearSaldo)}</td></tr>`;
+
+    html += '</tbody></table></div>';
+
+    // Verdict bar
+    if (yearInc > 0 && budgetInc > 0) {
+      const aq = yearSaldo / yearInc * 100;
+      let vc, vt, vs;
+      if (aq >= budgetQuote) { vc='on-track'; vt='Op schema!'; vs=`Spaarquote ${pct(aq)} — doel: ${pct(budgetQuote)}`; }
+      else if (aq >= budgetQuote*0.7) { vc='close'; vt='Bijna op doel'; vs=`Spaarquote ${pct(aq)} — doel: ${pct(budgetQuote)}`; }
+      else { vc='off-track'; vt='Onder doel'; vs=`Spaarquote ${pct(aq)} — doel: ${pct(budgetQuote)}`; }
+      html += `<div class="verdict-bar ${vc}">${vt}<div class="verdict-sub">${vs}</div></div>`;
+    }
+    html += '</div>';
+  }
+
+  // Waarschuwingen voor huidige maand
+  if (dashYear === new Date().getFullYear()) {
+    const now = new Date();
+    const curTxs = txForMonth(now);
+    let alerts = '';
+    if (curTxs.length > 0) {
+      data.categories.forEach(c => {
+        if (c.budget <= 0) return;
+        const spent = curTxs.filter(t => t.type==='expense' && t.category === c.name).reduce((s,t)=>s+t.amount, 0);
+        if (spent <= 0) return;
+        const pctUsed = (spent / c.budget) * 100;
+        if (pctUsed >= 100) alerts += `<div class="alert danger"><span class="alert-icon">⚠️</span>${escHtml(c.name)}: ${eur(spent)} van ${eur(c.budget)} — <b>over budget!</b></div>`;
+        else if (pctUsed >= 85) alerts += `<div class="alert warn"><span class="alert-icon">⚡</span>${escHtml(c.name)}: ${eur(spent)} van ${eur(c.budget)} — <b>bijna op</b></div>`;
+      });
+    }
+    if (alerts) html += `<div class="card"><h2>⚠️ Waarschuwingen ${MONTHS_NL[now.getMonth()]}</h2>${alerts}</div>`;
+  }
+
+  // Spaarquote chart
+  html += `<div class="card">
+    <h2>Spaarquote per maand — ${dashYear}</h2>
+    <div class="chart-container" style="height:260px"><canvas id="chartSavings"></canvas></div>
+    <div id="chartSavingsLegend" style="text-align:center;font-size:.75rem;color:var(--text-light);margin-top:.5rem;display:flex;flex-wrap:wrap;justify-content:center;gap:.25rem .5rem"></div>
+  </div>`;
+
+  // Cumulative top expenses (year-to-date)
+  const cumExpByCat = {};
+  for (let m = 0; m < 12; m++) {
+    const d = new Date(dashYear, m, 1);
+    txForMonth(d).filter(t => t.type==='expense').forEach(t => {
+      cumExpByCat[t.category] = (cumExpByCat[t.category]||0) + t.amount;
+    });
+  }
+  const cumTopCats = Object.entries(cumExpByCat).sort((a,b)=>b[1]-a[1]).slice(0,8);
+
+  html += `<div class="card">
+    <h2>Grootste uitgaven ${dashYear} (cumulatief)</h2>
+    ${cumTopCats.length > 0 ? `<div class="chart-container"><canvas id="chartExpenses"></canvas></div>` :
+      `<div class="empty-state" style="padding:1.5rem">
+        <div class="empty-icon">💸</div>
+        <p>Nog geen uitgaven geregistreerd</p>
+        <button class="empty-cta" onclick="openModal()">+ Transactie toevoegen</button>
+      </div>`}
+  </div>`;
+
+  document.getElementById('dashContent').innerHTML = html;
 
   renderSavingsChart();
-  if (topCats.length > 0) renderExpensesChart(topCats);
+  if (cumTopCats.length > 0) renderExpensesChart(cumTopCats);
 }
 
 function switchPage(pageId) {
@@ -1135,7 +1147,7 @@ function nlNum(v) {
 function renderSavingsChart() {
   const canvas = document.getElementById('chartSavings');
   if (!canvas) return;
-  const year = viewDate.getFullYear();
+  const year = dashYear;
   const labels = [], rates = [];
   const budgetInc = (data.incomeBudgets || []).reduce((s,b) => s + b.amount, 0);
   const budgetExp = data.categories.reduce((s,c) => s + (c.budget || 0), 0);
