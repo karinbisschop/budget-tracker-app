@@ -30,7 +30,7 @@
   }
 }
 
-body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:var(--bg);color:var(--text);min-height:100vh;overflow-x:hidden}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:var(--bg);color:var(--text);min-height:100vh;overflow-x:hidden;overflow-y:auto}
 button{cursor:pointer;font-family:inherit}
 input,select,textarea{font-family:inherit;font-size:.95rem;color:var(--text)}
 input:focus,select:focus,textarea:focus{outline:none;border-color:var(--primary-light) !important;box-shadow:0 0 0 3px rgba(79,70,229,.15)}
@@ -228,6 +228,24 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--primary-
 .verdict-bar.close{background:var(--orange-bg);color:var(--orange)}
 .verdict-bar.off-track{background:var(--red-bg);color:var(--red)}
 
+/* ========== OVERZICHT TABEL ========== */
+.overview-wrap{overflow-x:auto;overflow-y:visible;-webkit-overflow-scrolling:touch;margin:0 -.5rem;padding:0 .5rem;touch-action:pan-x pan-y}
+.overview-table{border-collapse:collapse;width:max-content;min-width:100%;font-size:.82rem}
+.overview-table th,.overview-table td{padding:.45rem .55rem;white-space:nowrap;border-bottom:1px solid var(--border)}
+.overview-table th{position:sticky;top:0;background:var(--card);font-size:.7rem;text-transform:uppercase;letter-spacing:.03em;color:var(--text-light);text-align:right;z-index:2}
+.overview-table th:first-child{text-align:left;position:sticky;left:0;z-index:3;background:var(--card)}
+.overview-table td:first-child{position:sticky;left:0;background:var(--card);font-weight:500;z-index:1;max-width:120px;overflow:hidden;text-overflow:ellipsis}
+.overview-table td:not(:first-child){text-align:right;font-variant-numeric:tabular-nums}
+.overview-table .ov-section{font-weight:700;font-size:.78rem;background:var(--bg);color:var(--text-light);text-transform:uppercase;letter-spacing:.03em}
+.overview-table .ov-section td{border-bottom:2px solid var(--border);padding:.55rem .55rem .35rem}
+.overview-table .ov-total td{font-weight:700;border-top:2px solid var(--border);border-bottom:2px solid var(--border);background:var(--bg)}
+.overview-table .ov-saldo td{font-weight:700;border-top:2px solid var(--text);background:var(--bg)}
+.overview-table .ov-sub td:first-child{padding-left:1.2rem;font-weight:400;color:var(--text-light);font-size:.78rem}
+.ov-green{color:var(--green)}.ov-red{color:var(--red)}.ov-blue{color:var(--blue)}
+.ov-year-toggle{display:flex;align-items:center;justify-content:center;gap:.75rem;margin-bottom:1rem}
+.ov-year-toggle button{background:var(--card);border:1px solid var(--border);border-radius:50%;width:34px;height:34px;font-size:1rem;display:flex;align-items:center;justify-content:center;box-shadow:var(--shadow);color:var(--text);cursor:pointer}
+.ov-year-toggle span{font-size:1.05rem;font-weight:700;min-width:60px;text-align:center}
+
 /* ========== RESPONSIVE ========== */
 @media(max-width:380px){
   .summary-row{grid-template-columns:1fr;gap:.4rem}
@@ -347,6 +365,16 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--primary-
     <div id="txContent"></div>
   </div>
 
+  <!-- Overzicht -->
+  <div class="page" id="pageOverview">
+    <div class="ov-year-toggle">
+      <button id="ovPrev" aria-label="Vorig jaar">&#8249;</button>
+      <span id="ovYear"></span>
+      <button id="ovNext" aria-label="Volgend jaar">&#8250;</button>
+    </div>
+    <div id="overviewContent"></div>
+  </div>
+
   <!-- Instellingen -->
   <div class="page" id="pageSettings">
     <div id="settingsContent"></div>
@@ -365,6 +393,7 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--primary-
     <button data-page="pageDashboard" class="active" aria-label="Dashboard"><span class="nav-icon">&#128200;</span>Dashboard</button>
     <button data-page="pageBudget" aria-label="Budget"><span class="nav-icon">&#128176;</span>Budget</button>
     <button data-page="pageTransactions" aria-label="Transacties"><span class="nav-icon">&#128221;</span>Transacties</button>
+    <button data-page="pageOverview" aria-label="Overzicht"><span class="nav-icon">&#128202;</span>Overzicht</button>
     <button data-page="pageSettings" aria-label="Instellingen"><span class="nav-icon">&#9881;</span>Instellingen</button>
   </nav>
 </div>
@@ -495,6 +524,7 @@ let undoBuffer = null;
 let undoTimer = null;
 let txSearchQuery = '';
 let txFilterCat = '';
+let overviewYear = new Date().getFullYear();
 
 // ============================================================
 //  DONKERE MODUS
@@ -849,6 +879,8 @@ function setupNav() {
   ['dashNext','budNext','txNext'].forEach(id => {
     document.getElementById(id).addEventListener('click', () => { viewDate.setMonth(viewDate.getMonth()+1); refreshAll(); });
   });
+  document.getElementById('ovPrev').addEventListener('click', () => { overviewYear--; renderOverview(); });
+  document.getElementById('ovNext').addEventListener('click', () => { overviewYear++; renderOverview(); });
   document.getElementById('fabAdd').addEventListener('click', toggleFabMenu);
   document.getElementById('fabBackdrop').addEventListener('click', closeFabMenu);
 
@@ -882,6 +914,7 @@ function refreshAll() {
   renderDashboard();
   renderBudgetPage();
   renderTransactions();
+  renderOverview();
   renderSettings();
 }
 
@@ -1542,6 +1575,157 @@ function saveMonthlyTotal() {
 function hasMonthlyTotal(d) {
   const mk = monthKey(d||viewDate);
   return (data.transactions||[]).some(t=>t.monthlyTotal&&t.date.substring(0,7)===mk);
+}
+
+// ============================================================
+//  OVERZICHT (JAAROVERZICHT)
+// ============================================================
+function renderOverview() {
+  document.getElementById('ovYear').textContent = overviewYear;
+  const el = document.getElementById('overviewContent');
+  const shortMonths = MONTHS_NL.map(m => m.slice(0,3));
+
+  // Gather data per month
+  const monthData = [];
+  for (let m = 0; m < 12; m++) {
+    const d = new Date(overviewYear, m, 1);
+    const txs = txForMonth(d);
+    const inc = totalIncome(txs);
+    const exp = totalExpenses(txs);
+
+    // Income per source
+    const incBySrc = {};
+    data.incomeSources.forEach(s => { incBySrc[s] = 0; });
+    txs.filter(t => t.type === 'income').forEach(t => {
+      incBySrc[t.category] = (incBySrc[t.category] || 0) + t.amount;
+    });
+
+    // Expenses per category (and sub)
+    const expByCat = {};
+    data.categories.forEach(c => {
+      expByCat[c.name] = { total: 0, subs: {} };
+      (c.subs || []).forEach(s => { expByCat[c.name].subs[s] = 0; });
+    });
+    txs.filter(t => t.type === 'expense').forEach(t => {
+      if (!expByCat[t.category]) expByCat[t.category] = { total: 0, subs: {} };
+      expByCat[t.category].total += t.amount;
+      if (t.subcategory) {
+        expByCat[t.category].subs[t.subcategory] = (expByCat[t.category].subs[t.subcategory] || 0) + t.amount;
+      }
+    });
+
+    monthData.push({ inc, exp, saldo: inc - exp, incBySrc, expByCat, hasTx: txs.length > 0 });
+  }
+
+  // Year totals
+  const yearInc = monthData.reduce((s, d) => s + d.inc, 0);
+  const yearExp = monthData.reduce((s, d) => s + d.exp, 0);
+  const yearSaldo = yearInc - yearExp;
+
+  function fmtCell(v, hasTx) {
+    if (!hasTx && v === 0) return '<span style="color:var(--text-light)">—</span>';
+    if (v === 0) return '<span style="color:var(--text-light)">—</span>';
+    return nlNum(Math.round(v));
+  }
+  function fmtTotal(v) {
+    if (v === 0) return '<span style="color:var(--text-light)">—</span>';
+    return nlNum(Math.round(v));
+  }
+
+  // Build header
+  let html = '<div class="card"><div class="overview-wrap"><table class="overview-table"><thead><tr><th></th>';
+  shortMonths.forEach(m => { html += `<th>${m}</th>`; });
+  html += '<th style="background:var(--bg);font-weight:700">Totaal</th></tr></thead><tbody>';
+
+  // ---- SALDO BLOCK (top) ----
+  // Total income row
+  html += `<tr class="ov-total"><td class="ov-green">Totaal inkomen</td>`;
+  monthData.forEach(d => { html += `<td class="ov-green">${fmtCell(d.inc, d.hasTx)}</td>`; });
+  html += `<td class="ov-green" style="background:var(--bg)">${fmtTotal(yearInc)}</td></tr>`;
+
+  // Total expenses row
+  html += `<tr class="ov-total"><td class="ov-red">Totaal uitgaven</td>`;
+  monthData.forEach(d => { html += `<td class="ov-red">${fmtCell(d.exp, d.hasTx)}</td>`; });
+  html += `<td class="ov-red" style="background:var(--bg)">${fmtTotal(yearExp)}</td></tr>`;
+
+  // Saldo row
+  html += `<tr class="ov-saldo"><td class="ov-blue">Saldo</td>`;
+  monthData.forEach(d => {
+    const cls = d.hasTx ? (d.saldo >= 0 ? 'ov-green' : 'ov-red') : '';
+    html += `<td class="${cls}">${fmtCell(d.saldo, d.hasTx)}</td>`;
+  });
+  const yrCls = yearSaldo >= 0 ? 'ov-green' : 'ov-red';
+  html += `<td class="${yrCls}" style="background:var(--bg)">${fmtTotal(yearSaldo)}</td></tr>`;
+
+  // Spacer
+  html += '<tr><td colspan="14" style="height:.6rem;border:none"></td></tr>';
+
+  // ---- INKOMEN DETAIL ----
+  html += `<tr class="ov-section"><td colspan="14">💰 Inkomen</td></tr>`;
+  data.incomeSources.forEach(src => {
+    const yearTotal = monthData.reduce((s, d) => s + (d.incBySrc[src] || 0), 0);
+    html += `<tr><td>${escHtml(src)}</td>`;
+    monthData.forEach(d => { html += `<td>${fmtCell(d.incBySrc[src] || 0, d.hasTx)}</td>`; });
+    html += `<td style="background:var(--bg);font-weight:600">${fmtTotal(yearTotal)}</td></tr>`;
+  });
+
+  // Spacer
+  html += '<tr><td colspan="14" style="height:.6rem;border:none"></td></tr>';
+
+  // ---- UITGAVEN DETAIL ----
+  html += `<tr class="ov-section"><td colspan="14">💸 Uitgaven</td></tr>`;
+  data.categories.forEach(c => {
+    const yearTotal = monthData.reduce((s, d) => s + ((d.expByCat[c.name] || {}).total || 0), 0);
+    const hasSubs = c.subs && c.subs.length > 0;
+    const idSafe = c.name.replace(/[^a-zA-Z0-9]/g, '_');
+
+    html += `<tr style="${hasSubs ? 'cursor:pointer' : ''}" ${hasSubs ? `onclick="toggleOvSubs('${idSafe}')"` : ''}>`;
+    html += `<td>${escHtml(c.name)}${hasSubs ? ' <span style="font-size:.7rem;color:var(--text-light)">▶</span>' : ''}</td>`;
+    monthData.forEach(d => { html += `<td>${fmtCell((d.expByCat[c.name] || {}).total || 0, d.hasTx)}</td>`; });
+    html += `<td style="background:var(--bg);font-weight:600">${fmtTotal(yearTotal)}</td></tr>`;
+
+    // Subcategories (hidden by default)
+    if (hasSubs) {
+      c.subs.forEach(s => {
+        const subYearTotal = monthData.reduce((sm, d) => sm + ((d.expByCat[c.name] || {}).subs[s] || 0), 0);
+        html += `<tr class="ov-sub ov-sub-${idSafe}" style="display:none"><td>${escHtml(s)}</td>`;
+        monthData.forEach(d => { html += `<td>${fmtCell((d.expByCat[c.name] || {}).subs[s] || 0, d.hasTx)}</td>`; });
+        html += `<td style="background:var(--bg)">${fmtTotal(subYearTotal)}</td></tr>`;
+      });
+    }
+  });
+
+  html += '</tbody></table></div></div>';
+
+  // Spaarquote card
+  const quoteData = monthData.map(d => d.hasTx && d.inc > 0 ? ((d.saldo / d.inc) * 100) : null);
+  const avgQuote = monthData.filter(d => d.hasTx && d.inc > 0).length > 0
+    ? yearInc > 0 ? (yearSaldo / yearInc * 100) : 0
+    : null;
+
+  html += `<div class="card" style="margin-top:1rem"><h2>Spaarquote ${overviewYear}</h2>
+    <div class="overview-wrap"><table class="overview-table"><thead><tr><th></th>`;
+  shortMonths.forEach(m => { html += `<th>${m}</th>`; });
+  html += '<th style="background:var(--bg);font-weight:700">Gem.</th></tr></thead><tbody>';
+  html += '<tr><td>Spaarquote</td>';
+  quoteData.forEach(q => {
+    if (q === null) html += '<td><span style="color:var(--text-light)">—</span></td>';
+    else {
+      const cls = q >= 0 ? 'ov-green' : 'ov-red';
+      html += `<td class="${cls}">${q.toFixed(1).replace('.',',')}%</td>`;
+    }
+  });
+  html += `<td style="background:var(--bg);font-weight:700" class="${avgQuote !== null && avgQuote >= 0 ? 'ov-green' : avgQuote !== null ? 'ov-red' : ''}">${avgQuote !== null ? avgQuote.toFixed(1).replace('.',',')+  '%' : '—'}</td>`;
+  html += '</tr></tbody></table></div></div>';
+
+  el.innerHTML = html;
+}
+
+function toggleOvSubs(catId) {
+  const rows = document.querySelectorAll('.ov-sub-' + catId);
+  rows.forEach(r => {
+    r.style.display = r.style.display === 'none' ? '' : 'none';
+  });
 }
 
 // ============================================================
