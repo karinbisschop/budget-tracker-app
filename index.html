@@ -161,6 +161,11 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--primary-
 .modal-actions .cancel{background:var(--bg);color:var(--text)}
 .modal-actions .save{background:linear-gradient(135deg,var(--primary),#7c3aed);color:#fff}
 
+/* mode toggle in modal */
+.mode-toggle{display:flex;gap:.5rem;margin-bottom:1rem;background:var(--bg);border-radius:10px;padding:3px}
+.mode-toggle button{flex:1;padding:.5rem;border:none;border-radius:8px;font-size:.85rem;font-weight:600;background:transparent;color:var(--text-light);transition:all .15s;cursor:pointer}
+.mode-toggle button.active-mode{background:var(--card);color:var(--primary);box-shadow:0 1px 3px rgba(0,0,0,.1)}
+
 /* type toggle in modal */
 .type-toggle{display:flex;gap:.5rem;margin-bottom:.85rem}
 .type-toggle button{flex:1;padding:.55rem;border:2px solid var(--border);border-radius:10px;font-size:.88rem;font-weight:600;background:var(--card);color:var(--text);transition:all .15s}
@@ -380,13 +385,8 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--primary-
     <div id="settingsContent"></div>
   </div>
 
-  <!-- FAB Menu -->
-  <div class="fab-backdrop" id="fabBackdrop"></div>
-  <div class="fab-menu" id="fabMenu">
-    <button class="fab-menu-item" onclick="closeFabMenu();openMonthlyTotalModal()"><span class="fm-icon">📋</span>Maandtotaal invoeren</button>
-    <button class="fab-menu-item" onclick="closeFabMenu();openModal()"><span class="fm-icon">➕</span>Losse transactie</button>
-  </div>
-  <button class="fab" id="fabAdd" title="Toevoegen" aria-label="Transactie toevoegen">+</button>
+  <!-- FAB -->
+  <button class="fab" id="fabAdd" title="Toevoegen" aria-label="Transactie toevoegen" onclick="openModal()">+</button>
 
   <!-- Bottom Nav -->
   <nav class="bottom-nav" role="navigation" aria-label="Hoofdnavigatie">
@@ -398,39 +398,64 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--primary-
   </nav>
 </div>
 
-<!-- ==================== TRANSACTION MODAL ==================== -->
+<!-- ==================== TRANSACTION MODAL (COMBINED) ==================== -->
 <div class="modal-overlay" id="txModal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
   <div class="modal">
     <h2 id="modalTitle">Transactie toevoegen</h2>
-    <div class="type-toggle">
-      <button id="modalIncome" onclick="setModalType('income')" aria-pressed="false">+ Inkomen</button>
-      <button id="modalExpense" class="active-expense" onclick="setModalType('expense')" aria-pressed="true">- Uitgave</button>
+    <div class="mode-toggle" id="modeToggle">
+      <button class="active-mode" onclick="setEntryMode('single')">Losse transactie</button>
+      <button onclick="setEntryMode('monthly')">Maandtotaal</button>
     </div>
-    <div class="field">
-      <label for="modalCat">Categorie</label>
-      <select id="modalCat"></select>
+
+    <!-- LOSSE TRANSACTIE -->
+    <div id="singleEntryForm">
+      <div class="type-toggle">
+        <button id="modalIncome" onclick="setModalType('income')" aria-pressed="false">+ Inkomen</button>
+        <button id="modalExpense" class="active-expense" onclick="setModalType('expense')" aria-pressed="true">- Uitgave</button>
+      </div>
+      <div class="field">
+        <label for="modalCat">Categorie</label>
+        <select id="modalCat"></select>
+      </div>
+      <div class="field" id="modalSubField">
+        <label for="modalSub">Subcategorie</label>
+        <select id="modalSub"></select>
+      </div>
+      <div class="field">
+        <label for="modalAmount">Bedrag (€)</label>
+        <input type="number" id="modalAmount" placeholder="0,00" min="0.01" max="999999" step="0.01" aria-required="true">
+        <div class="field-error" id="amountError">Voer een geldig bedrag in (0,01 – 999.999)</div>
+      </div>
+      <div class="field">
+        <label for="modalDate">Datum</label>
+        <input type="date" id="modalDate" aria-required="true">
+        <div class="field-error" id="dateError">Kies een geldige datum</div>
+      </div>
+      <div class="field">
+        <label for="modalNote">Notitie (optioneel)</label>
+        <textarea id="modalNote" placeholder="Bijv. boodschappen Albert Heijn" maxlength="200"></textarea>
+      </div>
+      <div class="modal-actions">
+        <button class="cancel" onclick="closeModal()">Annuleren</button>
+        <button class="save" onclick="saveTransaction()">Opslaan</button>
+      </div>
     </div>
-    <div class="field" id="modalSubField">
-      <label for="modalSub">Subcategorie</label>
-      <select id="modalSub"></select>
-    </div>
-    <div class="field">
-      <label for="modalAmount">Bedrag (€)</label>
-      <input type="number" id="modalAmount" placeholder="0,00" min="0.01" max="999999" step="0.01" aria-required="true">
-      <div class="field-error" id="amountError">Voer een geldig bedrag in (0,01 – 999.999)</div>
-    </div>
-    <div class="field">
-      <label for="modalDate">Datum</label>
-      <input type="date" id="modalDate" aria-required="true">
-      <div class="field-error" id="dateError">Kies een geldige datum</div>
-    </div>
-    <div class="field">
-      <label for="modalNote">Notitie (optioneel)</label>
-      <textarea id="modalNote" placeholder="Bijv. boodschappen Albert Heijn" maxlength="200"></textarea>
-    </div>
-    <div class="modal-actions">
-      <button class="cancel" onclick="closeModal()">Annuleren</button>
-      <button class="save" onclick="saveTransaction()">Opslaan</button>
+
+    <!-- MAANDTOTAAL -->
+    <div id="monthlyEntryForm" style="display:none">
+      <div class="field">
+        <label for="mtMonth2">Maand</label>
+        <input type="month" id="mtMonth2">
+      </div>
+      <div class="mt-progress" id="mtProgress2">
+        <span id="mtProgressText2">Totaal ingevuld: €0 van €0 budget</span>
+        <div class="mt-bar"><div class="mt-bar-fill" id="mtBarFill2" style="width:0%"></div></div>
+      </div>
+      <div id="mtBody2"></div>
+      <div class="modal-actions">
+        <button class="cancel" onclick="closeModal()">Annuleren</button>
+        <button class="save" onclick="saveMonthlyTotal2()">Opslaan</button>
+      </div>
     </div>
   </div>
 </div>
@@ -459,25 +484,6 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--primary-
   </div>
 </div>
 
-<!-- ==================== MONTHLY TOTAL MODAL ==================== -->
-<div class="modal-overlay" id="mtModal" role="dialog" aria-modal="true">
-  <div class="modal">
-    <h2>Maandtotaal invoeren</h2>
-    <div class="field">
-      <label for="mtMonth">Maand</label>
-      <input type="month" id="mtMonth">
-    </div>
-    <div class="mt-progress" id="mtProgress">
-      <span id="mtProgressText">Totaal ingevuld: €0 van €0 budget</span>
-      <div class="mt-bar"><div class="mt-bar-fill" id="mtBarFill" style="width:0%"></div></div>
-    </div>
-    <div id="mtBody"></div>
-    <div class="modal-actions">
-      <button class="cancel" onclick="closeMonthlyTotalModal()">Annuleren</button>
-      <button class="save" onclick="saveMonthlyTotal()">Opslaan</button>
-    </div>
-  </div>
-</div>
 
 <!-- UNDO TOAST -->
 <div class="toast" id="undoToast" role="status" aria-live="polite">
@@ -881,30 +887,34 @@ function setupNav() {
   });
   document.getElementById('ovPrev').addEventListener('click', () => { overviewYear--; renderOverview(); });
   document.getElementById('ovNext').addEventListener('click', () => { overviewYear++; renderOverview(); });
-  document.getElementById('fabAdd').addEventListener('click', toggleFabMenu);
-  document.getElementById('fabBackdrop').addEventListener('click', closeFabMenu);
+  // FAB direct open
 
   // Escape-toets sluit modals
   document.addEventListener('keydown', e => {
     if (e.key === 'Escape') {
       closeModal();
       closeEditModal();
-      closeMonthlyTotalModal();
       closeConfirm();
     }
   });
 }
 
-function toggleFabMenu() {
-  const menu = document.getElementById('fabMenu');
-  const bd = document.getElementById('fabBackdrop');
-  const isOpen = menu.classList.contains('active');
-  menu.classList.toggle('active', !isOpen);
-  bd.classList.toggle('active', !isOpen);
-}
-function closeFabMenu() {
-  document.getElementById('fabMenu').classList.remove('active');
-  document.getElementById('fabBackdrop').classList.remove('active');
+let entryMode = 'single';
+
+function setEntryMode(mode) {
+  entryMode = mode;
+  const btns = document.querySelectorAll('#modeToggle button');
+  btns[0].classList.toggle('active-mode', mode === 'single');
+  btns[1].classList.toggle('active-mode', mode === 'monthly');
+  document.getElementById('singleEntryForm').style.display = mode === 'single' ? '' : 'none';
+  document.getElementById('monthlyEntryForm').style.display = mode === 'monthly' ? '' : 'none';
+  document.getElementById('modalTitle').textContent = mode === 'single' ? (editingTxId ? 'Transactie bewerken' : 'Transactie toevoegen') : 'Maandtotaal invoeren';
+  if (mode === 'monthly') {
+    const y = viewDate.getFullYear();
+    const m = String(viewDate.getMonth()+1).padStart(2,'0');
+    document.getElementById('mtMonth2').value = `${y}-${m}`;
+    renderMtBody2();
+  }
 }
 
 function refreshAll() {
@@ -1101,7 +1111,7 @@ function renderDashboard() {
         `<div class="empty-state" style="padding:1.5rem">
           <div class="empty-icon">💸</div>
           <p>Nog geen uitgaven geregistreerd</p>
-          <button class="empty-cta" onclick="closeFabMenu();openModal()">+ Transactie toevoegen</button>
+          <button class="empty-cta" onclick="openModal()">+ Transactie toevoegen</button>
         </div>`}
     </div>`;
 
@@ -1418,8 +1428,10 @@ function renderTransactions() {
 // ============================================================
 //  TRANSACTION MODAL
 // ============================================================
-function openModal() {
+function openModal(mode) {
   editingTxId = null;
+  document.getElementById('modeToggle').style.display = '';
+  setEntryMode(mode || 'single');
   document.getElementById('modalTitle').textContent = 'Transactie toevoegen';
   document.getElementById('modalDate').value = new Date().toISOString().slice(0,10);
   document.getElementById('modalAmount').value = '';
@@ -1429,13 +1441,15 @@ function openModal() {
   ['amountError','dateError'].forEach(id => document.getElementById(id).classList.remove('show'));
   setModalType('expense');
   document.getElementById('txModal').classList.add('active');
-  setTimeout(() => document.getElementById('modalAmount').focus(), 100);
+  if (!mode || mode === 'single') setTimeout(() => document.getElementById('modalAmount').focus(), 100);
 }
 
 function editTx(id) {
   const tx = data.transactions.find(t => t.id === id);
   if (!tx) return;
   editingTxId = id;
+  document.getElementById('modeToggle').style.display = 'none';
+  setEntryMode('single');
   document.getElementById('modalTitle').textContent = 'Transactie bewerken';
   setModalType(tx.type);
   document.getElementById('modalCat').value = tx.category;
@@ -1575,6 +1589,54 @@ function saveMonthlyTotal() {
 function hasMonthlyTotal(d) {
   const mk = monthKey(d||viewDate);
   return (data.transactions||[]).some(t=>t.monthlyTotal&&t.date.substring(0,7)===mk);
+}
+
+// ============================================================
+//  MAANDTOTAAL IN GECOMBINEERD MODAL
+// ============================================================
+function renderMtBody2() {
+  const body = document.getElementById('mtBody2');
+  let html = '<h3 style="font-size:.9rem;color:var(--green);margin-bottom:.5rem">💰 Inkomen</h3><div class="budget-list" style="margin-bottom:1rem">';
+  data.incomeSources.forEach(src => {
+    const budgetObj = (data.incomeBudgets||[]).find(b=>b.name===src);
+    const budget = budgetObj ? budgetObj.amount : 0;
+    html += `<div class="budget-row"><span class="euro">€</span><span class="cat-label">${escHtml(src)}${budget>0?` <span style="font-size:.72rem;color:var(--text-light)">(budget: ${eur(budget)})</span>`:''}</span><input type="number" min="0" max="999999" step="0.01" placeholder="0" class="mt-input2" data-mt-type="income" data-mt-cat="${escHtml(src)}" oninput="updateMtProgress2()"></div>`;
+  });
+  html += '</div><h3 style="font-size:.9rem;color:var(--red);margin-bottom:.5rem">💸 Uitgaven</h3><div class="budget-list">';
+  data.categories.forEach(c => {
+    const budget = c.budget||0;
+    html += `<div class="budget-row"><span class="euro">€</span><span class="cat-label">${escHtml(c.name)}${budget>0?` <span style="font-size:.72rem;color:var(--text-light)">(budget: ${eur(budget)})</span>`:''}</span><input type="number" min="0" max="999999" step="0.01" placeholder="0" class="mt-input2" data-mt-type="expense" data-mt-cat="${escHtml(c.name)}" oninput="updateMtProgress2()"></div>`;
+  });
+  html += '</div>';
+  body.innerHTML = html;
+  updateMtProgress2();
+}
+
+function updateMtProgress2() {
+  let totalFilled = 0;
+  document.querySelectorAll('.mt-input2').forEach(inp => { totalFilled += parseFloat(inp.value)||0; });
+  const totalBudget = data.categories.reduce((s,c)=>s+(c.budget||0),0) + (data.incomeBudgets||[]).reduce((s,b)=>s+b.amount,0);
+  const pctFill = totalBudget > 0 ? Math.min((totalFilled/totalBudget)*100,100) : 0;
+  document.getElementById('mtProgressText2').textContent = `Totaal ingevuld: ${eur(totalFilled)}${totalBudget>0?' van '+eur(totalBudget)+' budget':''}`;
+  document.getElementById('mtBarFill2').style.width = pctFill+'%';
+}
+
+function saveMonthlyTotal2() {
+  const monthVal = document.getElementById('mtMonth2').value;
+  if (!monthVal) return;
+  const [year, month] = monthVal.split('-').map(Number);
+  const dateStr = `${year}-${String(month).padStart(2,'0')}-15`;
+  const mk = `${year}-${String(month).padStart(2,'0')}`;
+  data.transactions = data.transactions.filter(t => !(t.monthlyTotal && t.date.substring(0,7) === mk));
+  document.querySelectorAll('.mt-input2').forEach(inp => {
+    const amount = parseFloat(inp.value)||0;
+    if (amount <= 0) return;
+    data.transactions.push({ id:uid(), type:inp.dataset.mtType, category:inp.dataset.mtCat, subcategory:'', amount, date:dateStr, note:'Maandtotaal', monthlyTotal:true });
+  });
+  saveData(data);
+  viewDate = new Date(year, month-1, 1);
+  closeModal();
+  refreshAll();
 }
 
 // ============================================================
